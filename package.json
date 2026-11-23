@@ -1,39 +1,52 @@
 {
-  "name": "pi-web",
+  "name": "pi-webui",
   "version": "0.1.0",
-  "description": "Codex-style web UI for pi \u2014 browse, fork and drive your pi sessions from a browser",
+  "description": "Codex-style web UI for pi — browse, fork and drive your pi sessions from a browser",
   "type": "module",
   "license": "MIT",
   "bin": {
-    "pi-web": "./bin/pi-web.mjs"
+    "pi-webui": "./bin/pi-web.mjs"
   },
   "files": [
     "index.ts",
     "ws-lite.ts",
+    "fs-zip.ts",
     "ui",
     "bin"
   ],
   "pi": {
-    "extensions": [
-      "./index.ts"
-    ]
+    "extensions": ["./index.ts"],
+    "image": "https://raw.githubusercontent.com/chenminghuan-cn/pi-web/main/docs/screenshot.png"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-coding-agent",
+    "web-ui",
+    "codex",
+    "session-browser",
+    "coding-agent",
+    "websocket",
+    "sqlite"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chenminghuan-cn/pi-web.git"
+  },
+  "homepage": "https://github.com/chenminghuan-cn/pi-web#readme",
+  "bugs": {
+    "url": "https://github.com/chenminghuan-cn/pi-web/issues"
   },
   "scripts": {
-    "start": "node bin/pi-web.mjs"
+    "start": "node bin/pi-web.mjs",
+    "test": "node test/smoke.mjs"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.84.0",
     "jiti": "^2.7.0",
     "ws": "^8.18.0"
-  },
-  "engines": {
-    "node": ">=20"
-  },
-  "keywords": [
-    "pi",
-    "pi-coding-agent",
-    "web-ui",
-    "coding-agent",
-    "websocket"
-  ]
+  }
 }
