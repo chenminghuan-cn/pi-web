@@ -29,13 +29,14 @@ pi is a terminal coding agent. `pi-web` serves a full chat front-end over HTTP +
 
 ## Features
 
-- **Session browser** — every session file under `~/.pi/agent/sessions/`, grouped by project directory
+- **Session browser** — every session file under `~/.pi/agent/sessions/`, grouped by project directory, paged 60 at a time (a 406-session store returns 46KB per page instead of 275KB)
 - **Branch a conversation** — fork a session at any message, keep exploring without losing the original
 - **Live streaming** — token-by-token over WebSocket, with tool calls and thinking blocks rendered inline
 - **Model + thinking level switching** — from the composer, no restart
 - **Built-in model manager** — add any provider (OpenAI-compatible, Anthropic, Google, local Ollama/vLLM), edit per-model capacities, probe reachability, discover models from the endpoint. Keys stay in local `models.json` and are never echoed back
 - **First-run onboarding** — a fresh install has no provider, so the page says so and links straight to the manager instead of failing every message
 - **Live stats** — context usage, tokens, cost per session
+- **Round rail** — a thin tick strip on the right, one tick per user turn, sized by how much of the conversation that turn took; click to jump, the active turn is highlighted
 - **Built-in PTY terminal** — a real shell at `/pty`, not a fake one
 - **File browser** — tree + editor over the project workspace; right-click to **zip a file/folder** or **extract a `.zip`** (pure `node:zlib`, no zip dependency; never overwrites — extracts to `name-2/` instead)
 - **Zero front-end dependencies** — 1.7k lines of hand-written ES modules, no framework, no bundler; the WebSocket server (`ws-lite.ts`) is a 182-line RFC 6455 implementation

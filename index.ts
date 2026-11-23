@@ -450,17 +450,28 @@ export default function (pi: ExtensionAPI) {
     route("GET", /^\/api\/entries$/, async (_r, res) => {
       try { sendJson(res, 200, await rpc!.send({ type: "get_entries" })); } catch (e: any) { sendJson(res, 500, { error: String(e) }); }
     });
-    route("GET", /^\/api\/sessions$/, async (_r, res) => {
+    route("GET", /^\/api\/sessions$/, async (req, res) => {
       try {
+        // ?limit=N&offset=M pages the list; without them the whole list is returned
+        // (275KB for a few hundred sessions). `total` always describes the full set.
+        const q = new URL(String(req.url), "http://local");
+        const limit = Math.max(0, Number(q.searchParams.get("limit")) || 0);
+        const offset = Math.max(0, Number(q.searchParams.get("offset")) || 0);
         const all = await listSessionsCached();
         const st = await rpc!.send({ type: "get_state" });
+        const mapped = all.map((s: any) => ({
+          file: s.path, name: s.name, cwd: s.cwd,
+          firstMessage: s.firstMessage, lastMessage: s.lastMessage,
+          messageCount: s.messageCount, updated: s.updated ?? s.created, created: s.created,
+          isCurrent: s.path === st.sessionFile && s.cwd === rpcCwd,
+        })).sort((a: any, b: any) => b.updated - a.updated);
+        // ?cwd= scopes to one project before paging — the sidebar only shows the
+        // current project, so a global page would miss it entirely.
+        const cwdFilter = q.searchParams.get("cwd");
+        const scoped = cwdFilter ? mapped.filter((x: any) => x.cwd === cwdFilter) : mapped;
+        const page = limit ? scoped.slice(offset, offset + limit) : scoped;
         sendJson(res, 200, {
-          sessions: all.map((s: any) => ({
-            file: s.path, name: s.name, cwd: s.cwd,
-            firstMessage: s.firstMessage, lastMessage: s.lastMessage,
-            messageCount: s.messageCount, updated: s.updated ?? s.created, created: s.created,
-            isCurrent: s.path === st.sessionFile && s.cwd === rpcCwd,
-          })).sort((a: any, b: any) => b.updated - a.updated),
+          sessions: page, total: scoped.length, offset,
           current: st.sessionFile, cwd: rpcCwd,
         });
       } catch (e: any) { sendJson(res, 500, { error: String(e?.message ?? e) }); }

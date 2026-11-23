@@ -765,3 +765,13 @@ main { display: flex; flex-direction: column; height: 100vh; background: var(--b
 .empty-state.onboard { max-width: 560px; margin: 90px auto 0; }
 .empty-state.onboard p { margin-bottom: 12px; font-size: 13.5px; }
 .toast.ok { background: #16302a; color: #3fb950; border-color: #2a5a45; }
+
+/* ---- round rail: one tick per user turn ---- */
+main { position: relative; }
+.round-rail { position: absolute; right: 10px; top: 64px; bottom: 104px; width: 16px; display: flex; flex-direction: column; gap: 3px; align-items: center; justify-content: center; overflow: hidden; z-index: 18; opacity: 0; pointer-events: none; transition: opacity .18s; }
+.round-rail.show { opacity: 1; pointer-events: auto; }
+.round-tick { width: 12px; min-height: 2px; flex: 0 0 auto; border-radius: 2px; background: rgba(255,255,255,.16); cursor: pointer; transition: background .14s, width .14s; }
+.round-tick:hover { background: rgba(78,201,160,.75); width: 16px; }
+.round-tick.active { background: var(--accent); width: 16px; }
+.round-rail:hover .round-tick { background: rgba(255,255,255,.28); }
+.round-rail:hover .round-tick.active { background: var(--accent); }

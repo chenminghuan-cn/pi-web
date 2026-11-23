@@ -166,9 +166,13 @@ function showModal(title, bodyHtml, actions) {
 function closeModal() { modalOverlay.classList.add('hidden'); }
 modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) closeModal(); });
 // ---- message UI ----
+let roundCounter = 0;
+
 function addMessage(role, content, opts) {
   const wrap = document.createElement('div');
   wrap.className = 'msg ' + role;
+  // Anchor every user turn so the round rail can jump to it.
+  if (role === 'user') wrap.dataset.round = String(roundCounter++);
   let bodyHtml;
   if (content && typeof content === 'object' && !Array.isArray(content) && content.role) {
     // Caller passed a full message object (m.role, m.content).
@@ -365,6 +369,7 @@ async function renderAllMessages() {
     ]);
     const list = (data.messages || []).filter(m => m && m.role !== 'toolResult');
     messagesEl.innerHTML = '';
+    roundCounter = 0;
 
     if (list.length === 0) onboardingMode = false;
     if (list.length === 0) {
@@ -423,12 +428,66 @@ async function renderAllMessages() {
       if (m.role === 'user' || m.role === 'assistant') addMessage(m.role, m);
     }
     messagesEl.scrollTop = messagesEl.scrollHeight;
+    renderRoundRail();
     if (chatTitle.textContent === 'New chat' && firstUser) {
       const t = firstUser.replace(/\s+/g,' ').trim().slice(0, 80);
       chatTitle.textContent = t; document.title = t.slice(0, 50) + ' · π';
     }
   } catch {}
 }
+
+// ---- round rail: one tick per user turn, click to jump, highlight what is in view ----
+const roundRail = document.getElementById('round-rail');
+let roundTicks = [];
+
+function renderRoundRail() {
+  if (!roundRail) return;
+  const turns = [...messagesEl.querySelectorAll('.msg.user')];
+  roundRail.innerHTML = '';
+  roundTicks = [];
+  if (turns.length < 2) { roundRail.classList.remove('show'); return; }
+
+  const total = Math.max(1, messagesEl.scrollHeight);
+  turns.forEach((el, i) => {
+    const tick = document.createElement('div');
+    tick.className = 'round-tick';
+    const c = el.querySelector('.body')?.textContent || '';
+    tick.title = `${i + 1}. ${c.replace(/\s+/g, ' ').trim().slice(0, 80)}`;
+    tick.onclick = () => {
+      el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      // offset for the sticky topbar
+      messagesEl.scrollTop -= 12;
+    };
+    roundRail.appendChild(tick);
+    roundTicks.push({ el, tick });
+  });
+  // Ticks grow with the turn's share of the conversation, so long answers get
+  // more rail than one-liners.
+  turns.forEach((el, i) => {
+    const next = turns[i + 1];
+    const span = ((next ? next.offsetTop : total) - el.offsetTop) / total;
+    roundTicks[i].tick.style.height = Math.max(2, Math.round(span * 320)) + 'px';
+  });
+  roundRail.classList.add('show');
+  updateActiveRound();
+}
+
+function updateActiveRound() {
+  if (!roundTicks.length) return;
+  const top = messagesEl.scrollTop + 40;
+  let active = 0;
+  for (let i = 0; i < roundTicks.length; i++) {
+    if (roundTicks[i].el.offsetTop <= top) active = i;
+  }
+  roundTicks.forEach((t, i) => t.tick.classList.toggle('active', i === active));
+}
+
+messagesEl.addEventListener('scroll', () => {
+  updateActiveRound();
+  if (messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 40) {
+    // remember: at the bottom we always want the latest turn highlighted
+  }
+}, { passive: true });
 
 async function refreshStats() {
   try {
@@ -627,7 +686,7 @@ function applySessionsData(sessions, projects, current) {
   otherProjectsEl.innerHTML = '';
   otherToggle.style.display = others.length ? '' : 'none';
   for (const p of others) {
-    const n = sessions.filter(s => s.cwd === p.cwd).length;
+    const n = p.count ?? sessions.filter(s => s.cwd === p.cwd).length;
     const d = document.createElement('div');
     d.className = 'other-proj-item';
     d.innerHTML = `<span>📁 ${esc(basename(p.cwd))}</span><span class="count">${n}</span>`;
@@ -638,23 +697,52 @@ function applySessionsData(sessions, projects, current) {
     otherProjectsEl.appendChild(d);
   }
 }
+const SESS_PAGE = 60;
+let sessTotal = 0;
+let sessLoadingMore = false;
+
 async function refreshSessions() {
   try {
     // Cold-start: paint from localStorage instantly if available, then refresh from network.
     try {
       const cached = JSON.parse(localStorage.getItem(SESS_CACHE_KEY) || 'null');
       if (cached && Array.isArray(cached.sessions) && Array.isArray(cached.projects)) {
+        sessTotal = cached.total ?? cached.sessions.length;
         applySessionsData(cached.sessions, cached.projects, cached.current || currentCwd);
       }
     } catch {}
 
-    const [{ sessions }, { projects, current }] = await Promise.all([jget('/api/sessions'), jget('/api/projects')]);
+    const { projects, current } = await jget('/api/projects');
+    const { sessions, total } = await jget(
+      `/api/sessions?limit=${SESS_PAGE}&offset=0&cwd=${encodeURIComponent(current)}`,
+    );
+    sessTotal = total ?? sessions.length;
     try {
-      localStorage.setItem(SESS_CACHE_KEY, JSON.stringify({ sessions, projects, current, at: Date.now() }));
+      localStorage.setItem(SESS_CACHE_KEY, JSON.stringify({ sessions, projects, current, total: sessTotal, at: Date.now() }));
     } catch {}
     applySessionsData(sessions, projects, current);
   } catch {}
 }
+
+// Sidebar pages: 60 rows up front, the rest appended when the list is scrolled.
+async function loadMoreSessions() {
+  if (sessLoadingMore) return;
+  if (allSessions.length >= sessTotal) return;
+  sessLoadingMore = true;
+  try {
+    const { sessions } = await jget(
+      `/api/sessions?limit=${SESS_PAGE}&offset=${allSessions.length}&cwd=${encodeURIComponent(currentCwd)}`,
+    );
+    if (!sessions.length) { sessTotal = allSessions.length; return; }
+    allSessions = [...allSessions, ...sessions];
+    applySessionsData(allSessions, allProjects, currentCwd);
+  } catch {}
+  finally { sessLoadingMore = false; }
+}
+
+sessionsEl.addEventListener('scroll', () => {
+  if (sessionsEl.scrollTop + sessionsEl.clientHeight >= sessionsEl.scrollHeight - 80) loadMoreSessions();
+}, { passive: true });
 
 function renderSessItem(s) {
   const d = document.createElement('div');
