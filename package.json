@@ -1,11 +1,11 @@
 {
-  "name": "pi-webui",
+  "name": "pi-webui-panel",
   "version": "0.1.0",
   "description": "Codex-style web UI for pi — browse, fork and drive your pi sessions from a browser",
   "type": "module",
   "license": "MIT",
   "bin": {
-    "pi-webui": "./bin/pi-web.mjs"
+    "pi-webui-panel": "./bin/pi-web.mjs"
   },
   "files": [
     "index.ts",
@@ -15,7 +15,9 @@
     "bin"
   ],
   "pi": {
-    "extensions": ["./index.ts"],
+    "extensions": [
+      "./index.ts"
+    ],
     "image": "https://raw.githubusercontent.com/chenminghuan-cn/pi-web/main/docs/screenshot.png"
   },
   "engines": {

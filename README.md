@@ -7,7 +7,7 @@
 <p><b>把 pi 搬进浏览器：会话、终端、文件树、浏览器面板，一页全在。</b></p>
 
 <p>
-  <a href="https://www.npmjs.com/package/pi-webui"><img src="https://img.shields.io/npm/v/pi-webui?logo=npm&label=npm&color=cb3837" alt="npm"></a>
+  <a href="https://www.npmjs.com/package/pi-webui-panel"><img src="https://img.shields.io/npm/v/pi-webui-panel?logo=npm&label=npm&color=cb3837" alt="npm"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT"></a>
   <img src="https://img.shields.io/badge/node-%3E%3D22.5-5FA04E?logo=node.js&logoColor=white" alt="node">
   <img src="https://img.shields.io/badge/pi-%E2%89%A51.0-4ec9a0" alt="pi">
@@ -69,20 +69,20 @@ desktop with a display it stays headed so you can watch the agent drive it.
 ## Install
 
 ```bash
-npx pi-webui          # no clone, no build — needs pi on PATH
+npx pi-webui-panel        # no clone, no build — needs pi on PATH
 ```
 
 Or install it globally, or as a pi package:
 
 ```bash
-npm i -g pi-webui     # then just: pi-webui
-pi install npm:pi-webui   # pi loads it as an extension; `pi --web` opens the UI
+npm i -g pi-webui-panel   # then run: pi-webui-panel
+pi install npm:pi-webui-panel  # pi loads it as an extension; `pi --web` opens the UI
 ```
 
 All three give you the same thing at http://127.0.0.1:5174:
 
 ```bash
-pi-webui --port 8080 --host 0.0.0.0 --no-open
+pi-webui-panel --port 8080 --host 0.0.0.0 --no-open
 ```
 
 In a container the only requirement is Docker.
