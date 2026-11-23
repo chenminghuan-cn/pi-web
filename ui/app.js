@@ -556,20 +556,18 @@ function renderRoundRail() {
     tick.className = 'round-tick';
     const c = el.querySelector('.body')?.textContent || '';
     tick.title = `${i + 1}. ${c.replace(/\s+/g, ' ').trim().slice(0, 80)}`;
+    // One scroll command, not scrollIntoView + a manual scrollTop nudge — the
+    // two fight each other and the smooth animation lands at the wrong place.
     tick.onclick = () => {
-      el.scrollIntoView({ block: 'start', behavior: 'smooth' });
-      // offset for the sticky topbar
-      messagesEl.scrollTop -= 12;
+      messagesEl.scrollTo({ top: Math.max(0, el.offsetTop - 12), behavior: 'smooth' });
     };
-    roundRail.appendChild(tick);
-    roundTicks.push({ el, tick });
-  });
-  // Ticks grow with the turn's share of the conversation, so long answers get
-  // more rail than one-liners.
-  turns.forEach((el, i) => {
+    // flex-grow carries the turn's share of the conversation, so the ticks always
+    // fill the rail instead of stopping half-way down it.
     const next = turns[i + 1];
     const span = ((next ? next.offsetTop : total) - el.offsetTop) / total;
-    roundTicks[i].tick.style.height = Math.max(2, Math.round(span * 320)) + 'px';
+    tick.style.flexGrow = String(Math.max(0.6, span * turns.length));
+    roundRail.appendChild(tick);
+    roundTicks.push({ el, tick });
   });
   roundRail.classList.add('show');
   updateActiveRound();
