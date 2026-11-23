@@ -17,9 +17,28 @@ pi is a terminal coding agent. `pi-web` serves a full chat front-end over HTTP +
 - **File browser** — read files from the project workspace (`/api/fs/list`)
 - **Zero front-end dependencies** — 1.7k lines of hand-written ES modules, no framework, no bundler; the WebSocket server (`ws-lite.ts`) is a 182-line RFC 6455 implementation
 
+## Docker
+
+The whole thing runs in a clean container — no host tooling beyond Docker:
+
+```bash
+docker build -t pi-web .                                   # includes Chromium for the browser panel
+docker build -t pi-web --build-arg WITH_BROWSER=0 .        # slim, no browser panel
+docker run --rm -p 5174:5174 \
+  -v "$HOME/.pi/agent:/root/.pi/agent" \
+  -v "$PWD:/workspace" pi-web
+```
+
+`docker compose up` does the same thing. Mount `~/.pi/agent` to keep your sessions,
+`auth.json` and the sqlite index; mount your project at `/workspace` so the agent and
+the file panel see real files.
+
+In a container Chromium is started headless (`--no-sandbox`, no `/dev/shm`); on a
+desktop with a display it stays headed so you can watch the agent drive it.
+
 ## Requirements
 
-- Node.js >= 20
+- Node.js >= 22.5 (the session index uses `node:sqlite`)
 - pi installed (`npm i -g @earendil-works/pi-coding-agent`) — pi-web is a control panel for pi, it is **not** a standalone agent
 
 ## Install
@@ -42,6 +61,35 @@ pi --web --web-port 8080
 
 The server has **no authentication**, by default it listens on `127.0.0.1` only. It can read your sessions, spawn shell commands and write files through the agent — binding it to `0.0.0.0` exposes all of that to your network. Put it behind a reverse proxy with auth (or an SSH tunnel) if you need remote access.
 
+## Session index (SQLite)
+
+pi stores every session as JSONL under `<agentDir>/sessions/<encoded-cwd>/`. Walking
+those files on each sidebar refresh costs seconds once you have a few hundred sessions.
+pi-web mirrors the metadata into `<agentDir>/pi-web.sqlite` and serves `/api/sessions`
+from there:
+
+| | 405 sessions, cold start | afterwards |
+|---|---|---|
+| JSONL scan (pi's `SessionManager.listAll`) | 6.0 s | 2.0 s |
+| SQLite index | 6.0 s (one-time build) | **0.02 s** |
+
+The JSONL files remain the source of truth — the DB is a disposable cache. Delete
+`pi-web.sqlite` at any time and it rebuilds itself. A cheap signature (file count +
+newest mtime) decides when to rebuild; on a warm start the sidebar never waits for a
+full scan.
+
+## Testing
+
+```bash
+node test/smoke.mjs http://127.0.0.1:5174
+```
+
+Covers static assets, every read-only API, the WebSocket round-trip and the CDP
+browser (tabs / navigate / screenshot). Exits non-zero on failure, safe to re-run.
+
+Verified end to end in a clean container (`--network none`, no host files mounted):
+13/13 checks pass, three consecutive runs.
+
 ## Architecture
 
 ```
@@ -54,7 +102,7 @@ bin/pi-web.mjs ──► index.ts (HTTP + WebSocket server)
 
 ## Notes / limitations
 
-- `/api/sessions` walks every session JSONL and returns the full list — fine for a personal setup with hundreds of sessions, slow with tens of thousands.
+- `/api/sessions` still returns the whole list (~275KB for 405 sessions, ~30KB gzipped) — pagination is the next step.
 - One browser session drives one pi child process; single-user by design.
 - `PI_BIN` overrides which pi executable is spawned.
 

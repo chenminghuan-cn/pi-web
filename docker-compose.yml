@@ -1,0 +1,19 @@
+services:
+  pi-web:
+    build:
+      context: .
+      args:
+        # 0 = no Chromium (image ~200MB smaller, browser panel disabled)
+        WITH_BROWSER: 1
+    ports:
+      - "5174:5174"
+    volumes:
+      # sessions, auth.json, models.json and the sqlite index
+      - ${HOME}/.pi/agent:/root/.pi/agent
+      # the project the agent works on
+      - ${PWD}:/workspace
+    working_dir: /workspace
+    # pi needs a model provider key; put it in ~/.pi/agent/auth.json
+    # or pass it through explicitly:
+    # environment:
+    #   - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}

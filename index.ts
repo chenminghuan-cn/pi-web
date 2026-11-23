@@ -40,6 +40,7 @@ async function getBuiltinCommands(): Promise<any[]> {
   ];
 }
 import { dirname, join, normalize, isAbsolute } from "node:path";
+import { homedir } from "node:os";
 import { spawn } from "node:child_process";
 import { stat, readdir, writeFile, rename, mkdir, rm } from "node:fs/promises";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -49,19 +50,152 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const safeJson = (o: unknown) => JSON.stringify(o, (_k, v) => typeof v === "bigint" ? v.toString() : v);
 
 // ---- Session list cache ----
-// SessionManager.listAll() walks every session JSONL on disk; with many sessions
-// this is slow and is hit twice (sessions + projects) on every sidebar refresh
-// (every 5s + every agent_settled). Cache the raw list for a short TTL and
-// explicitly invalidate on any mutation.
+// ---- Session index (SQLite) ----
+// pi keeps every session as JSONL under <agentDir>/sessions/<encoded-cwd>/. Walking
+// all of them on each sidebar refresh costs seconds once you have hundreds of
+// sessions — and the sidebar polls. We mirror the metadata into SQLite
+// (<agentDir>/pi-web.sqlite): the JSONL files stay the source of truth, the DB is
+// a disposable cache, safe to delete, it rebuilds itself.
 const SESS_CACHE_TTL_MS = 3000;
+const SESS_DB_FILE = "pi-web.sqlite";
 let sessCache: { at: number; list: any[] } | null = null;
-function invalidateSessCache() { sessCache = null; }
+let sessForceSync = false;
+function invalidateSessCache(force = false) { sessCache = null; if (force) sessForceSync = true; }
+
+function piAgentDir(): string {
+  const env = process.env.PI_CODING_AGENT_DIR;
+  if (!env) return join(homedir(), ".pi", "agent");
+  return env.startsWith("~") ? join(homedir(), env.slice(1)) : env;
+}
+
+let sessDbPromise: Promise<any | null> | undefined;
+const SESS_SCHEMA = "2";
+function sessionDb(): Promise<any | null> {
+  if (!sessDbPromise) sessDbPromise = (async () => {
+    try {
+      const { DatabaseSync } = (await import("node:sqlite")) as any;
+      const db = new DatabaseSync(join(piAgentDir(), SESS_DB_FILE));
+      db.exec([
+        "PRAGMA journal_mode = WAL",
+        "CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT)",
+        "CREATE TABLE IF NOT EXISTS sessions (path TEXT PRIMARY KEY, cwd TEXT, name TEXT, first_message TEXT, last_message TEXT, message_count INTEGER, updated INTEGER, created INTEGER)",
+        "CREATE INDEX IF NOT EXISTS idx_sessions_cwd ON sessions(cwd, updated DESC)",
+      ].join("; "));
+      // Schema upgrades: the index is disposable, so just wipe it.
+      const version = db.prepare("SELECT v FROM meta WHERE k = 'schema'").get()?.v;
+      if (version !== SESS_SCHEMA) {
+        db.exec("DELETE FROM sessions; DELETE FROM meta");
+        db.prepare("INSERT OR REPLACE INTO meta (k, v) VALUES ('schema', ?)").run(SESS_SCHEMA);
+      }
+      return db;
+    } catch (e: any) {
+      console.error(`[pi-web] sqlite session index unavailable (${e?.message ?? e}); falling back to JSONL scan`);
+      return null;
+    }
+  })();
+  return sessDbPromise;
+}
+
+// Cheap signature of the store: file count + newest mtime. Appending to a session
+// bumps its mtime, so any change invalidates the cached rows.
+async function sessionStoreSignature(): Promise<string> {
+  const root = join(piAgentDir(), "sessions");
+  const files: string[] = [];
+  try {
+    for (const d of await readdir(root, { withFileTypes: true })) {
+      if (!d.isDirectory()) continue;
+      const sub = join(root, d.name);
+      for (const f of await readdir(sub)) if (f.endsWith(".jsonl")) files.push(join(sub, f));
+    }
+    const stats = await Promise.all(files.map(f => stat(f).catch(() => null)));
+    let newest = 0;
+    for (const st of stats) if (st && st.mtimeMs > newest) newest = st.mtimeMs;
+    return `${files.length}:${Math.round(newest)}`;
+  } catch {
+    return "0:0";
+  }
+}
+
+let sessRebuild: Promise<void> | null = null;
+function rebuildSessionIndex(db: any, sig: string): Promise<void> {
+  if (sessRebuild) return sessRebuild;
+  sessRebuild = (async () => {
+    const rows = await SessionManager.listAll();
+    db.exec("BEGIN");
+    try {
+      db.exec("DELETE FROM sessions");
+      const ins = db.prepare(
+        "INSERT OR REPLACE INTO sessions (path, cwd, name, first_message, last_message, message_count, updated, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+      );
+      for (const s of rows) {
+        ins.run(
+          String(s.path),
+          String(s.cwd ?? ""),
+          s.name == null ? null : String(s.name),
+          s.firstMessage == null ? null : String(s.firstMessage),
+          s.lastMessage == null ? null : String(s.lastMessage),
+          Number(s.messageCount ?? 0) || 0,
+          Number(s.updated ?? s.created ?? 0) || 0,
+          Number(s.created ?? 0) || 0,
+        );
+      }
+      db.prepare("INSERT OR REPLACE INTO meta (k, v) VALUES ('sig', ?)").run(sig);
+      db.exec("COMMIT");
+    } catch (e) {
+      try { db.exec("ROLLBACK"); } catch {}
+      throw e;
+    }
+  })().finally(() => { sessRebuild = null; });
+  return sessRebuild;
+}
+
+function readSessionIndex(db: any): any[] {
+  const out: any[] = [];
+  try {
+    const rows = db.prepare(
+      "SELECT path, cwd, name, first_message, last_message, message_count, updated, created FROM sessions ORDER BY updated DESC"
+    ).all() as any[];
+    for (const r of rows) {
+      out.push({
+        path: r.path, cwd: r.cwd, name: r.name ?? undefined,
+        firstMessage: r.first_message ?? undefined, lastMessage: r.last_message ?? undefined,
+        messageCount: r.message_count ?? 0, updated: r.updated, created: r.created,
+      });
+    }
+  } catch {}
+  return out;
+}
+
 async function listSessionsCached(): Promise<any[]> {
   const now = Date.now();
   if (sessCache && now - sessCache.at < SESS_CACHE_TTL_MS) return sessCache.list;
-  const list = await SessionManager.listAll();
-  sessCache = { at: now, list };
-  return list;
+
+  const db = await sessionDb();
+  if (!db) {
+    const list = await SessionManager.listAll();
+    sessCache = { at: now, list };
+    return list;
+  }
+
+  let sig = "0:0";
+  try { sig = await sessionStoreSignature(); } catch {}
+  let stored: string | undefined;
+  try { stored = db.prepare("SELECT v FROM meta WHERE k = 'sig'").get()?.v; } catch {}
+
+  const mustSync = sessForceSync;
+  sessForceSync = false;
+
+  let rows = readSessionIndex(db);
+  if (!rows.length || stored !== sig || mustSync) {
+    // Rebuild. Block only when we have nothing to serve (first run, or an explicit
+    // mutation such as delete/rename); otherwise refresh in the background and
+    // answer from the cache so the sidebar never waits on a full JSONL scan.
+    const p = rebuildSessionIndex(db, sig).catch((e: any) =>
+      console.error("[pi-web] session index rebuild failed:", e?.message ?? e));
+    if (!rows.length || mustSync) { await p; rows = readSessionIndex(db); }
+  }
+  sessCache = { at: now, list: rows };
+  return rows;
 }
 
 type Handler = (req: IncomingMessage, res: ServerResponse, b?: any, m?: RegExpMatchArray) => Promise<void> | void;
@@ -244,6 +378,8 @@ export default function (pi: ExtensionAPI) {
     if (saved?.cwd && existsSync(saved.cwd) && saved.cwd !== startCwd) startCwd = saved.cwd;
     if (saved?.sessionFile && existsSync(saved.sessionFile)) restoreSession = saved.sessionFile;
     bootRpc(startCwd, { restoreSession });
+    // Warm the session index in the background so the first sidebar load is instant.
+    void listSessionsCached().catch(() => {});
 
     routes.length = 0;
     route("GET", /^\/$/, async (_r, res) => sendText(res, 200, await readFile(join(__dirname, "ui", "index.html"), "utf8"), "text/html"));
@@ -331,7 +467,7 @@ export default function (pi: ExtensionAPI) {
       catch (e: any) { sendJson(res, 500, { error: String(e) }); }
     });
     route("POST", /^\/api\/sessions\/rename$/, async (_r, res, b) => {
-      try { const r = await rpc!.send({ type: "set_session_name", name: b.name }); invalidateSessCache(); sendJson(res, 200, r); }
+      try { const r = await rpc!.send({ type: "set_session_name", name: b.name }); invalidateSessCache(true); sendJson(res, 200, r); }
       catch (e: any) { sendJson(res, 500, { error: String(e) }); }
     });
     route("POST", /^\/api\/sessions\/delete$/, async (_r, res, b) => {
@@ -343,7 +479,7 @@ export default function (pi: ExtensionAPI) {
           const t = spawnSync("trash", [b.file], { encoding: "utf-8" });
           if (t.status !== 0 && ex(b.file)) await rm(b.file, { force: true });
         }
-        invalidateSessCache();
+        invalidateSessCache(true);
         sendJson(res, 200, { ok: true });
       } catch (e: any) { sendJson(res, 500, { error: String(e) }); }
     });
@@ -619,10 +755,17 @@ export default function (pi: ExtensionAPI) {
       await mkdir(myDataDir, { recursive: true });
       const { openSync } = await import("node:fs");
       const outFd = openSync(`${home}/.pi/web-browser.log`, "a");
+      // Headless only when there is no display server (containers, servers). A desktop
+      // session keeps the headed browser so the user can see what the agent is doing.
+      const headless = process.platform === "linux" && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY;
       const proc = spawn(chrome, [
         `--remote-debugging-port=${port}`,
         `--user-data-dir=${myDataDir}`,
+        ...(headless ? ["--headless=new"] : []),
         "--no-first-run", "--no-default-browser-check", "--disable-features=Translate",
+        // Containers run as root with a small /dev/shm: both flags are required there,
+        // harmless on a normal desktop.
+        "--no-sandbox", "--disable-dev-shm-usage",
         "--remote-allow-origins=*",
         "about:blank",
       ], { stdio: ["ignore", outFd, outFd], detached: true });
@@ -646,20 +789,15 @@ export default function (pi: ExtensionAPI) {
       try {
         const { readFileSync } = await import("node:fs");
         const log = readFileSync(`${home}/.pi/web-browser.log`, "utf8").split(/\n/).slice(-8).join("\n");
-        if (log) reason += "; chrome log: " + log.slice(-500);
+        if (log) reason += "; chrome log: " + log.slice(-1200);
       } catch {}
       throw new Error(reason);
     }
 
     // Minimal CDP client over WebSocket (resolved from pi's node_modules to avoid bundling ws)
     async function loadWs() {
-      const candidates = [
-        () => import("ws"),
-        () => import("/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/ws/index.js"),
-        () => import("file:///opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/ws/wrapper.mjs"),
-      ];
-      for (const imp of candidates) { try { return await imp(); } catch {} }
-      throw new Error("ws module not found");
+      try { return await import("ws"); } catch {}
+      throw new Error("ws module not found — add it to package.json dependencies");
     }
     async function cdpSend(wsUrl: string, method: string, params?: any, sessionId?: string): Promise<any> {
       const { default: WebSocket } = await loadWs();
