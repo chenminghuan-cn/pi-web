@@ -999,7 +999,6 @@ function renderSessItem(s) {
     <div class="more-btn" title="More">⋮</div>`;
   d.onclick = async (ev) => {
     if (ev.target.classList.contains('more-btn')) return;
-    if (currentView !== 'chat') setView('chat');
     if (s.isCurrent) return;
     await jpost('/api/sessions/switch', { file: s.file });
     messagesEl.innerHTML = '';
@@ -1804,35 +1803,6 @@ function highlightActiveFile(abs) {
 }
 
 // ============ TERMINAL TAB ============
-// ---- top-level view switch: chat | file | terminal | browser ----
-const viewTabsEl = document.getElementById('view-tabs');
-let currentView = 'chat';
-
-function setView(view) {
-  currentView = view;
-  document.body.classList.toggle('view-tool', view !== 'chat');
-  viewTabsEl?.querySelectorAll('.vt').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
-  if (view === 'chat') { setWorkbar(false); return; }
-
-  setWorkbar(true);
-  if (view === 'file') {
-    ensureTreeLoaded();
-    workbar.classList.remove('no-tree');
-    treeSearch?.focus();
-    return;
-  }
-  const kind = view;
-  const existing = tabs.find((t) => t.kind === kind);
-  if (existing) { activateTab(existing.id); return; }
-  if (kind === 'terminal') openTerminalTab();
-  else if (kind === 'browser') openBrowserTab();
-}
-
-viewTabsEl?.addEventListener('click', (ev) => {
-  const btn = ev.target.closest('.vt');
-  if (btn) setView(btn.dataset.view);
-});
-
 function openTerminalTab() {
   const tab = addTab({ kind: 'terminal', title: '终端', icon: '⌨' });
   tab.data = { ws: null, buf: '', input: null };
