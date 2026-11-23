@@ -2,6 +2,8 @@
 
 Codex-style web UI for [pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) — browse, fork and drive your pi sessions from any browser.
 
+![node](https://img.shields.io/badge/node-%3E%3D22.5-blue) ![license](https://img.shields.io/badge/license-MIT-blue) ![pi](https://img.shields.io/badge/pi-%E2%89%A51.0-4ec9a0) ![docker](https://img.shields.io/badge/docker-ready-2496ed)
+
 ![pi-web UI](docs/screenshot.png)
 
 pi is a terminal coding agent. `pi-web` serves a full chat front-end over HTTP + WebSocket, so you can keep long sessions running on a machine and talk to them from a laptop, phone, or tablet on the same network.
@@ -42,6 +44,10 @@ desktop with a display it stays headed so you can watch the agent drive it.
 - pi installed (`npm i -g @earendil-works/pi-coding-agent`) — pi-web is a control panel for pi, it is **not** a standalone agent
 
 ## Install
+
+Three ways to run it — the container needs nothing but Docker.
+
+![quickstart](docs/quickstart.png)
 
 ```bash
 npm i -g pi-web       # installs pi as a dependency too
