@@ -36,7 +36,7 @@ RUN npm i -g @earendil-works/pi-coding-agent
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
-COPY index.ts ws-lite.ts ./
+COPY index.ts ws-lite.ts fs-zip.ts ./
 COPY ui ./ui
 COPY bin ./bin
 RUN chmod +x /app/bin/pi-web.mjs && ln -sf /app/bin/pi-web.mjs /usr/local/bin/pi-web

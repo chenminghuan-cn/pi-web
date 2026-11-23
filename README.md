@@ -37,7 +37,7 @@ pi is a terminal coding agent. `pi-web` serves a full chat front-end over HTTP +
 - **First-run onboarding** — a fresh install has no provider, so the page says so and links straight to the manager instead of failing every message
 - **Live stats** — context usage, tokens, cost per session
 - **Built-in PTY terminal** — a real shell at `/pty`, not a fake one
-- **File browser** — read files from the project workspace (`/api/fs/list`)
+- **File browser** — tree + editor over the project workspace; right-click to **zip a file/folder** or **extract a `.zip`** (pure `node:zlib`, no zip dependency; never overwrites — extracts to `name-2/` instead)
 - **Zero front-end dependencies** — 1.7k lines of hand-written ES modules, no framework, no bundler; the WebSocket server (`ws-lite.ts`) is a 182-line RFC 6455 implementation
 
 ## Docker

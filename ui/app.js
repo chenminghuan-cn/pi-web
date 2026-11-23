@@ -242,7 +242,7 @@ function handlePromptError(message) {
 }
 let lastAttemptText = '';
 let lastAttemptAttachments = null;
-function showErrorToast(message) {
+function showToast(message, ok = false) {
   let t = document.getElementById('toast');
   if (!t) {
     t = document.createElement('div');
@@ -251,10 +251,12 @@ function showErrorToast(message) {
     document.body.appendChild(t);
   }
   t.textContent = message;
+  t.classList.toggle('ok', !!ok);
   t.classList.add('show');
-  clearTimeout(showErrorToast._t);
-  showErrorToast._t = setTimeout(() => t.classList.remove('show'), 6000);
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => t.classList.remove('show'), ok ? 3000 : 6000);
 }
+function showErrorToast(message) { showToast(message, false); }
 
 // ---- REST ----
 async function jget(p) { const r = await fetch(p); if (!r.ok) throw new Error(await r.text()); return r.json(); }
@@ -678,6 +680,9 @@ function renderSessItem(s) {
 }
 
 function openCtxMenu(anchor, s) {
+  ctxMenu.innerHTML = `
+    <div class="ctx-item" data-act="rename">重命名</div>
+    <div class="ctx-item danger" data-act="delete">删除</div>`;
   const r = anchor.getBoundingClientRect();
   ctxMenu.style.left = (r.left - 140) + 'px';
   ctxMenu.style.top = (r.bottom + 4) + 'px';
@@ -685,14 +690,69 @@ function openCtxMenu(anchor, s) {
   $$('.ctx-item', ctxMenu).forEach(el => {
     el.onclick = async () => {
       ctxMenu.classList.add('hidden');
+      const title = s.name || s.firstMessage || s.file;
       if (el.dataset.act === 'rename') {
-        const n = prompt('Rename chat:', s.name || s.firstMessage || '');
-        if (n && n.trim()) { await jpost('/api/sessions/rename', { file: s.file, name: n.trim() }); refreshSessions(); refreshStats(); }
+        showModal('重命名会话', `<input id="rn-input" type="text" value="${esc(s.name || s.firstMessage || '')}">`, [
+          { label: '取消' },
+          { label: '保存', primary: true, onClick: async () => {
+              const v = document.getElementById('rn-input')?.value?.trim();
+              if (v) { await jpost('/api/sessions/rename', { file: s.file, name: v }); refreshSessions(); refreshStats(); }
+            } },
+        ]);
       } else if (el.dataset.act === 'delete') {
-        if (confirm(`Delete "${s.name || s.firstMessage || s.file}"?`)) {
-          await jpost('/api/sessions/delete', { file: s.file });
-          refreshSessions();
-        }
+        showModal('删除会话', `删除「${esc(title)}」？文件会被移到废纸篓。`, [
+          { label: '取消' },
+          { label: '删除', primary: true, onClick: async () => {
+              await jpost('/api/sessions/delete', { file: s.file });
+              refreshSessions();
+            } },
+        ]);
+      }
+    };
+  });
+}
+
+// ---- file tree context menu: zip / unzip / copy path ----
+function fmtBytes(n) {
+  if (n < 1024) return n + 'B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + 'KB';
+  return (n / 1024 / 1024).toFixed(1) + 'MB';
+}
+
+function openTreeMenu(ev, node) {
+  const isZip = !node.isDir && /\.zip$/i.test(node.name);
+  ctxMenu.innerHTML = `
+    <div class="ctx-item" data-act="zip">压缩为 .zip</div>
+    ${isZip ? '<div class="ctx-item" data-act="unzip">解压到同名目录</div>' : ''}
+    <div class="ctx-item" data-act="copy">复制路径</div>`;
+  ctxMenu.style.left = Math.min(ev.clientX, window.innerWidth - 200) + 'px';
+  ctxMenu.style.top = Math.min(ev.clientY, window.innerHeight - 150) + 'px';
+  ctxMenu.classList.remove('hidden');
+  const rel = node.abs.slice(currentCwd.length + 1) || node.name;
+  ctxMenu.querySelectorAll('.ctx-item').forEach(el => {
+    el.onclick = async () => {
+      ctxMenu.classList.add('hidden');
+      const act = el.dataset.act;
+      if (act === 'copy') {
+        try { await navigator.clipboard.writeText(node.abs); showToast('已复制路径', true); } catch { showErrorToast(node.abs); }
+        return;
+      }
+      if (act === 'zip') {
+        showToast(`正在压缩 ${node.name} …`, true);
+        try {
+          const r = await jpost('/api/fs/zip', { path: rel });
+          await reloadTree();
+          showToast(`已生成 ${r.file.split('/').pop()}（${r.count} 个文件，${fmtBytes(r.bytes)}）`, true);
+        } catch (e) { showErrorToast('压缩失败：' + (e.message || e)); }
+        return;
+      }
+      if (act === 'unzip') {
+        showToast(`正在解压 ${node.name} …`, true);
+        try {
+          const r = await jpost('/api/fs/unzip', { path: rel });
+          await reloadTree();
+          showToast(`已解压到 ${r.dir.split('/').pop()}/（${r.count} 个文件）`, true);
+        } catch (e) { showErrorToast('解压失败：' + (e.message || e)); }
       }
     };
   });
@@ -1634,6 +1694,7 @@ function renderTreeNode(node, parent, pad, isRoot = false) {
     childContainer.className = 'tree-children';
     parent.appendChild(childContainer);
   }
+  row.addEventListener('contextmenu', (ev) => { ev.preventDefault(); ev.stopPropagation(); openTreeMenu(ev, node); });
   row.addEventListener('click', async (e) => {
     if (node.isDir) {
       // toggle expand

@@ -373,9 +373,12 @@ export default function (pi: ExtensionAPI) {
 
     // Restore the last project + session we were looking at, if that path still exists.
     const saved = loadWebState();
+    // The project shown is the directory pi-web was started in — "what I cd'd into"
+    // is what the UI should show. Set PI_WEB_RESTORE=1 to reopen the last project
+    // instead (the old behaviour, handy when running as a long-lived service).
     let startCwd = ctx.cwd;
     let restoreSession: string | undefined;
-    if (saved?.cwd && existsSync(saved.cwd) && saved.cwd !== startCwd) startCwd = saved.cwd;
+    if (process.env.PI_WEB_RESTORE === "1" && saved?.cwd && existsSync(saved.cwd)) startCwd = saved.cwd;
     if (saved?.sessionFile && existsSync(saved.sessionFile)) restoreSession = saved.sessionFile;
     bootRpc(startCwd, { restoreSession });
     // Warm the session index in the background so the first sidebar load is instant.
@@ -773,6 +776,36 @@ export default function (pi: ExtensionAPI) {
         if (existsSync(target)) return sendJson(res, 400, { error: "exists" });
         await writeFile(target, "", "utf8");
         sendJson(res, 200, { ok: true, path: target });
+      } catch (e: any) { sendJson(res, 500, { error: String(e?.message ?? e) }); }
+    });
+
+    // ---- zip / unzip for the file panel ----
+    route("POST", /^\/api\/fs\/zip$/, async (_r, res, b) => {
+      try {
+        if (!b?.path) return sendJson(res, 400, { error: "path required" });
+        const target = resolveFSPath(b.path);
+        if (!existsSync(target)) return sendJson(res, 404, { error: "not found" });
+        const { zipPath, uniquePath } = await import("./fs-zip.ts");
+        const base = target.split("/").filter(Boolean).pop() || "archive";
+        const parent = dirname(target);
+        const out = uniquePath(parent, `${base}.zip`);
+        const { buf, count } = await zipPath(target);
+        await writeFile(out, buf);
+        sendJson(res, 200, { ok: true, file: out, count, bytes: buf.length });
+      } catch (e: any) { sendJson(res, 500, { error: String(e?.message ?? e) }); }
+    });
+
+    route("POST", /^\/api\/fs\/unzip$/, async (_r, res, b) => {
+      try {
+        if (!b?.path) return sendJson(res, 400, { error: "path required" });
+        const target = resolveFSPath(b.path);
+        if (!existsSync(target)) return sendJson(res, 404, { error: "not found" });
+        if (!target.toLowerCase().endsWith(".zip")) return sendJson(res, 400, { error: "not a .zip file" });
+        const { unzipTo, uniquePath } = await import("./fs-zip.ts");
+        const base = (target.split("/").filter(Boolean).pop() || "archive").replace(/\.zip$/i, "");
+        const dest = uniquePath(dirname(target), base);
+        const { count } = await unzipTo(target, dest);
+        sendJson(res, 200, { ok: true, dir: dest, count });
       } catch (e: any) { sendJson(res, 500, { error: String(e?.message ?? e) }); }
     });
 
