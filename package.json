@@ -1,6 +1,6 @@
 {
   "name": "pi-webui-panel",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Codex-style web UI for pi — browse, fork and drive your pi sessions from a browser",
   "type": "module",
   "license": "MIT",

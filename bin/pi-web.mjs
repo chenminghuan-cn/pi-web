@@ -36,9 +36,9 @@ try {
 }
 
 if (cli.help) {
-  console.log(`pi-web — browser UI for pi
+  console.log(`pi-webui-panel — browser UI for pi
 
-Usage: pi-web [--port 5174] [--host 127.0.0.1] [--no-open]
+Usage: pi-webui-panel [--port 5174] [--host 127.0.0.1] [--no-open]
 
 Requires pi (@earendil-works/pi-coding-agent) installed and on PATH.`);
   process.exit(0);
