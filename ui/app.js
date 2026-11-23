@@ -184,6 +184,12 @@ composerEl.appendChild(attachBtn);
 const modelLabel = $('#model-label'), modelMenu = $('#model-menu'), modelPill = $('#model-pill');
 const thinkingLabel = $('#thinking-label'), thinkingMenu = $('#thinking-menu'), thinkingPill = $('#thinking-pill');
 const chatTitle = $('#chat-title'), chatMeta = $('#chat-meta');
+chatTitle.title = '双击重命名';
+chatTitle.addEventListener('dblclick', async () => {
+  const st = await jget('/api/state').catch(() => null);
+  if (!st?.sessionFile) return;
+  renameSession({ file: st.sessionFile, name: chatTitle.textContent });
+});
 const sessionsEl = $('#current-sessions');
 const otherProjectsEl = $('#other-projects');
 const otherToggle = $('#other-toggle'), otherCaret = $('#other-caret');
@@ -193,6 +199,27 @@ const folderPicker = $('#folder-picker');
 const footerStatus = $('#footer-status');
 const ctxMenu = $('#ctx-menu');
 const modalOverlay = $('#modal-overlay'), modalTitle = $('#modal-title'), modalBody = $('#modal-body'), modalActions = $('#modal-actions');
+
+// ---- theme (dark by default, remembered) ----
+const THEME_KEY = 'pi-web-theme';
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  try { localStorage.setItem(THEME_KEY, theme); } catch {}
+}
+document.getElementById('theme-btn')?.addEventListener('click', () => {
+  applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
+});
+(() => {
+  let saved = null;
+  try { saved = localStorage.getItem(THEME_KEY); } catch {}
+  applyTheme(saved === 'light' ? 'light' : 'dark');
+})();
+
+// version comes from package.json, not a hand-written string
+jget('/api/meta').then((m) => {
+  const el = document.getElementById('profile-ver');
+  if (el && m?.version) el.textContent = 'v' + m.version;
+}).catch(() => {});
 
 // ---- Modal helper ----
 function showModal(title, bodyHtml, actions) {
@@ -1009,7 +1036,24 @@ function renderSessItem(s) {
     ev.stopPropagation();
     openCtxMenu(ev.target, s);
   };
+  d.ondblclick = (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    renameSession(s);
+  };
   return d;
+}
+
+function renameSession(s) {
+  showModal('重命名会话', `<input id="rn-input" type="text" value="${esc(s.name || s.firstMessage || '')}" placeholder="给这个会话起个名字">`, [
+    { label: '取消' },
+    { label: '保存', primary: true, onClick: async () => {
+        const v = document.getElementById('rn-input')?.value?.trim();
+        if (!v) return false;
+        await jpost('/api/sessions/rename', { file: s.file, name: v });
+        refreshSessions(); refreshStats();
+      } },
+  ]);
 }
 
 function openCtxMenu(anchor, s) {
@@ -1025,13 +1069,7 @@ function openCtxMenu(anchor, s) {
       ctxMenu.classList.add('hidden');
       const title = s.name || s.firstMessage || s.file;
       if (el.dataset.act === 'rename') {
-        showModal('重命名会话', `<input id="rn-input" type="text" value="${esc(s.name || s.firstMessage || '')}">`, [
-          { label: '取消' },
-          { label: '保存', primary: true, onClick: async () => {
-              const v = document.getElementById('rn-input')?.value?.trim();
-              if (v) { await jpost('/api/sessions/rename', { file: s.file, name: v }); refreshSessions(); refreshStats(); }
-            } },
-        ]);
+        renameSession(s);
       } else if (el.dataset.act === 'delete') {
         showModal('删除会话', `删除「${esc(title)}」？文件会被移到废纸篓。`, [
           { label: '取消' },
@@ -1566,6 +1604,8 @@ function setWorkbar(open) {
   workbar.classList.toggle('open', open);
   document.body.classList.toggle('work-open', open);
   rbToggle.classList.toggle('active', open);
+  rbToggle.setAttribute('aria-pressed', open ? 'true' : 'false');
+  rbToggle.title = open ? '收起工具面板' : '展开工具面板';
   if (open && tabs.length === 0) {
     // show empty tool list
   }

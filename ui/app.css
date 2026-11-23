@@ -823,3 +823,54 @@ main { position: relative; }
 /* landing flash on the turn you jumped to */
 @keyframes trFlash { 0%, 100% { background: transparent; } 12% { background: rgba(78,201,160,.11); } }
 .msg.tr-flash { animation: trFlash 1.6s ease-out; border-radius: 10px; }
+
+/* ---- profile block: avatar + real version + theme toggle ---- */
+.profile-row { display: flex; align-items: center; gap: 10px; }
+.avatar-sm { width: 34px; height: 34px; border-radius: 50%; overflow: hidden; flex: 0 0 auto; background: var(--bg-2); display: block; line-height: 0; }
+.avatar-sm img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.profile-info { min-width: 0; flex: 1; }
+.profile-name { display: block; font-size: 13px; font-weight: 600; color: var(--text); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-name:hover { color: var(--accent); }
+.profile-ver { font-size: 10.5px; color: var(--text-3, #888); font-variant-numeric: tabular-nums; }
+#theme-btn { font-size: 14px; }
+
+/* ---- light theme ---- */
+:root[data-theme="light"] {
+  --bg: #ffffff;
+  --bg-2: #f6f7f8;
+  --panel-hover: #ececee;
+  --panel-active: #e3e4e7;
+  --border: #e2e3e6;
+  --text: #1c1f1d;
+  --text-2: #4a4f4c;
+  --text-3: #82888a;
+  --accent: #0f9d7a;
+  --accent-dim: #0f9d7a22;
+  --err: #c0392b;
+  --code-bg: #f2f3f4;
+}
+:root[data-theme="light"] .modal-overlay { background: rgba(20,24,22,.34); }
+:root[data-theme="light"] .chat-meta .stat { background: rgba(0,0,0,.045); }
+:root[data-theme="light"] .chat-meta .stat:hover { background: rgba(0,0,0,.075); }
+:root[data-theme="light"] .round-tick { background: rgba(0,0,0,.16); }
+:root[data-theme="light"] .rail-preview { box-shadow: 0 14px 34px rgba(0,0,0,.16); }
+:root[data-theme="light"] .msg .body code { background: rgba(0,0,0,.05); border-color: rgba(0,0,0,.06); color: #0b7a5f; }
+:root[data-theme="light"] .tool-block pre { background: var(--code-bg); }
+
+/* panel toggle: the right pane fills in when the tools panel is open */
+.rb-toggle-btn { display: inline-flex; align-items: center; justify-content: center; }
+.rb-toggle-btn .rb-pane { opacity: 0; transition: opacity .16s ease; }
+.rb-toggle-btn.active .rb-pane { opacity: .85; }
+.rb-toggle-btn.active { color: var(--accent); }
+
+/* theme toggle icon: sun in light mode, moon in dark */
+#theme-btn { display: inline-flex; align-items: center; justify-content: center; }
+#theme-btn .th-sun { display: none; }
+:root[data-theme="light"] #theme-btn .th-moon { display: none; }
+:root[data-theme="light"] #theme-btn .th-sun { display: block; }
+
+/* avatar falls back to π when GitHub is unreachable */
+.avatar-sm { display: grid; place-items: center; background: var(--accent); }
+.avatar-sm::before { content: 'π'; grid-area: 1 / 1; font-size: 15px; font-weight: 700; color: #06231b; }
+.avatar-sm img { grid-area: 1 / 1; }
+.avatar-sm img.broken { opacity: 0; }

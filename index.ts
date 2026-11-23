@@ -398,6 +398,14 @@ export default function (pi: ExtensionAPI) {
       });
     };
 
+    // Version shown in the sidebar — read from package.json so it never drifts.
+    route("GET", /^\/api\/meta$/, async (_r, res) => {
+      try {
+        const pkg = JSON.parse(readFileSync(join(__dirname, "package.json"), "utf8"));
+        sendJson(res, 200, { name: pkg.name, version: pkg.version, repo: "https://github.com/chenminghuan-cn/pi-web" });
+      } catch (e: any) { sendJson(res, 500, { error: String(e?.message ?? e) }); }
+    });
+
     route("GET", /^\/api\/state$/, async (_r, res) => {
       try {
         const s = await rpc!.send({ type: "get_state" });
