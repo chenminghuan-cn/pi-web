@@ -539,28 +539,106 @@ async function renderAllMessages() {
   } catch {}
 }
 
-// ---- round rail: one tick per user turn, click to jump, highlight what is in view ----
+// ---- round rail: one tick per user turn; hover for a preview, click to jump ----
 const roundRail = document.getElementById('round-rail');
 let roundTicks = [];
+let railPreviewEl = null;
+
+// First meaningful line of the user's turn, attachments and markup stripped.
+function turnPrompt(el) {
+  const body = el.querySelector('.body');
+  if (!body) return '';
+  const clone = body.cloneNode(true);
+  clone.querySelectorAll('.img-block, .attachments, .tool-block').forEach((n) => n.remove());
+  const t = (clone.textContent || '').replace(/\s+/g, ' ').trim();
+  return t.length > 160 ? t.slice(0, 160) + '…' : t;
+}
+
+// First assistant text in the turn, without thinking blocks or tool output.
+function turnReply(el) {
+  let n = el.nextElementSibling;
+  while (n && !n.classList.contains('msg')) n = n.nextElementSibling;
+  while (n && !n.classList.contains('user')) {
+    if (n.classList.contains('assistant')) {
+      const body = n.querySelector('.body');
+      if (body) {
+        const clone = body.cloneNode(true);
+        clone.querySelectorAll('.think, .tool-block, pre, img').forEach((x) => x.remove());
+        const t = (clone.textContent || '').replace(/\s+/g, ' ').trim();
+        if (t) return t.length > 200 ? t.slice(0, 200) + '…' : t;
+      }
+    }
+    n = n.nextElementSibling;
+    while (n && !n.classList.contains('msg')) n = n.nextElementSibling;
+  }
+  return '';
+}
+
+function railPreview() {
+  if (!railPreviewEl) {
+    railPreviewEl = document.createElement('div');
+    railPreviewEl.className = 'rail-preview hidden';
+    document.querySelector('main')?.appendChild(railPreviewEl);
+  }
+  return railPreviewEl;
+}
+
+function showRailPreview(idx) {
+  const item = roundTicks[idx];
+  if (!item) return;
+  const pv = railPreview();
+  const prompt = turnPrompt(item.el);
+  const reply = turnReply(item.el);
+  pv.innerHTML = `
+    <div class="rp-n">第 ${idx + 1} 轮</div>
+    <div class="rp-prompt">${esc(prompt || '(空提问)')}</div>
+    ${reply ? `<div class="rp-resp">${esc(reply)}</div>` : ''}`;
+  pv.classList.remove('hidden');
+  // Anchor to the tick itself (viewport coordinates): the rail lives inside a
+  // grid column, so `right: Npx` relative to the panel drifts when the work area
+  // is open.
+  const r = item.tick.getBoundingClientRect();
+  const pvH = pv.offsetHeight;
+  const top = Math.min(Math.max(8, r.top + r.height / 2 - pvH / 2), window.innerHeight - pvH - 12);
+  pv.style.top = Math.round(top) + 'px';
+  pv.style.left = Math.round(Math.max(8, r.left - pv.offsetWidth - 14)) + 'px';
+}
+
+function hideRailPreview() {
+  railPreviewEl?.classList.add('hidden');
+}
+
+function flashTurn(el) {
+  el.classList.remove('tr-flash');
+  void el.offsetWidth;
+  el.classList.add('tr-flash');
+  setTimeout(() => el.classList.remove('tr-flash'), 1600);
+}
 
 function renderRoundRail() {
   if (!roundRail) return;
   const turns = [...messagesEl.querySelectorAll('.msg.user')];
   roundRail.innerHTML = '';
   roundTicks = [];
+  hideRailPreview();
   if (turns.length < 2) { roundRail.classList.remove('show'); return; }
 
   const total = Math.max(1, messagesEl.scrollHeight);
   turns.forEach((el, i) => {
     const tick = document.createElement('div');
     tick.className = 'round-tick';
-    const c = el.querySelector('.body')?.textContent || '';
-    tick.title = `${i + 1}. ${c.replace(/\s+/g, ' ').trim().slice(0, 80)}`;
+    tick.dataset.i = String(i);
+    tick.setAttribute('aria-label', `跳到第 ${i + 1} 轮`);
     // One scroll command, not scrollIntoView + a manual scrollTop nudge — the
     // two fight each other and the smooth animation lands at the wrong place.
     tick.onclick = () => {
       messagesEl.scrollTo({ top: Math.max(0, el.offsetTop - 12), behavior: 'smooth' });
+      flashTurn(el);
     };
+    tick.addEventListener('pointerenter', () => showRailPreview(i));
+    tick.addEventListener('focus', () => showRailPreview(i));
+    tick.addEventListener('pointerleave', hideRailPreview);
+    tick.addEventListener('blur', hideRailPreview);
     // flex-grow carries the turn's share of the conversation, so the ticks always
     // fill the rail instead of stopping half-way down it.
     const next = turns[i + 1];
@@ -575,20 +653,20 @@ function renderRoundRail() {
 
 function updateActiveRound() {
   if (!roundTicks.length) return;
-  const top = messagesEl.scrollTop + 40;
+  const top = messagesEl.scrollTop + 90;
   let active = 0;
   for (let i = 0; i < roundTicks.length; i++) {
     if (roundTicks[i].el.offsetTop <= top) active = i;
   }
-  roundTicks.forEach((t, i) => t.tick.classList.toggle('active', i === active));
+  roundTicks.forEach((t, i) => {
+    const on = i === active;
+    t.tick.classList.toggle('active', on);
+    if (on) t.tick.setAttribute('aria-current', 'true');
+    else t.tick.removeAttribute('aria-current');
+  });
 }
 
-messagesEl.addEventListener('scroll', () => {
-  updateActiveRound();
-  if (messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 40) {
-    // remember: at the bottom we always want the latest turn highlighted
-  }
-}, { passive: true });
+messagesEl.addEventListener('scroll', updateActiveRound, { passive: true });
 
 async function refreshStats() {
   try {
@@ -610,15 +688,45 @@ function applyStats(s) {
     projPath.title = s.cwd;
   }
   if (s.sessionName) { chatTitle.textContent = s.sessionName; document.title = s.sessionName + ' · π'; }
+  // Stats are chips with the detail in the tooltip: the numbers that matter at a
+  // glance, the breakdown on hover.
   chatMeta.innerHTML = '';
-  const add = (l,v,t) => { if (v==null || v==='') return; const sp=document.createElement('span'); sp.innerHTML=`<b>${esc(l)}:</b> ${esc(v)}`; if (t) sp.title=t; chatMeta.appendChild(sp); };
-  add('msgs', s.messages?.total);
-  if (s.contextUsage?.contextWindow) {
-    const pct = Math.round(s.contextUsage.percent ?? (s.contextUsage.tokens||0)/s.contextUsage.contextWindow*100);
-    add('ctx', pct+'%', `${formatTokens(s.contextUsage.tokens||0)}/${formatTokens(s.contextUsage.contextWindow)} tokens`);
+  const chip = (label, value, title, tone) => {
+    if (value == null || value === '') return;
+    const sp = document.createElement('span');
+    sp.className = 'stat' + (tone ? ' ' + tone : '');
+    sp.innerHTML = `<i>${esc(label)}</i><b>${esc(String(value))}</b>`;
+    if (title) sp.title = title;
+    chatMeta.appendChild(sp);
+  };
+
+  const m = s.messages;
+  if (m?.total != null) {
+    const parts = [];
+    if (m.user != null) parts.push(`用户 ${m.user}`);
+    if (m.assistant != null) parts.push(`助手 ${m.assistant}`);
+    if (m.toolCalls != null) parts.push(`工具 ${m.toolCalls}`);
+    chip('msgs', m.total, parts.join(' · ') || undefined);
   }
-  add('tokens', s.tokens ? formatTokens(s.tokens.total) : '0');
-  add('cost', formatCost(s.cost));
+
+  const cu = s.contextUsage;
+  if (cu?.contextWindow) {
+    const pct = Math.round(cu.percent ?? ((cu.tokens || 0) / cu.contextWindow) * 100);
+    const tone = pct >= 90 ? 'bad' : pct >= 70 ? 'warn' : '';
+    chip('ctx', pct + '%', `${formatTokens(cu.tokens || 0)} / ${formatTokens(cu.contextWindow)} tokens，超过 90% 会触发压缩`, tone);
+  }
+
+  const t = s.tokens;
+  if (t) {
+    const bits = [`input ${formatTokens(t.input || 0)}`, `output ${formatTokens(t.output || 0)}`];
+    if (t.cacheRead) bits.push(`cache 读 ${formatTokens(t.cacheRead)}`);
+    if (t.cacheWrite) bits.push(`cache 写 ${formatTokens(t.cacheWrite)}`);
+    chip('tok', formatTokens(t.total || 0), '本会话累计：' + bits.join(' · '));
+  }
+
+  if (s.cost != null) {
+    chip('cost', formatCost(s.cost), s.cost > 0 ? '按模型单价估算' : '当前模型没有配置单价，显示为 $0', s.cost > 0 ? 'good' : 'muted');
+  }
   if (s.model) modelLabel.textContent = shortModel(s.model);
   if (s.thinkingLevel) thinkingLabel.textContent = s.thinkingLevel;
   footerStatus.textContent = '';
