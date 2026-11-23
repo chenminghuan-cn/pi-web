@@ -190,11 +190,9 @@ chatTitle.addEventListener('dblclick', async () => {
   if (!st?.sessionFile) return;
   renameSession({ file: st.sessionFile, name: chatTitle.textContent });
 });
-const sessionsEl = $('#current-sessions');
-const otherProjectsEl = $('#other-projects');
-const otherToggle = $('#other-toggle'), otherCaret = $('#other-caret');
+const sessGroupsEl = $('#sess-groups'), sessScrollEl = $('#sess-scroll'), searchWrap = $('#search-wrap');
 const sessSearch = $('#sess-search');
-const projName = $('#proj-name'), projPath = $('#proj-path'), projSwitch = $('#proj-switch'), projMenu = $('#proj-menu'), projRow = $('#project-row');
+const projMenu = $('#proj-menu');
 const folderPicker = $('#folder-picker');
 const footerStatus = $('#footer-status');
 const ctxMenu = $('#ctx-menu');
@@ -709,11 +707,6 @@ async function refreshStats() {
 }
 function applyStats(s) {
   currentCwd = s.cwd || currentCwd;
-  if (s.cwd) {
-    projName.textContent = basename(s.cwd) || '~';
-    projPath.textContent = s.cwd;
-    projPath.title = s.cwd;
-  }
   if (s.sessionName) { chatTitle.textContent = s.sessionName; document.title = s.sessionName + ' · π'; }
   // Stats are chips with the detail in the tooltip: the numbers that matter at a
   // glance, the breakdown on hover.
@@ -896,100 +889,141 @@ async function refreshThinkingMenu() {
   } catch {}
 }
 
-// ---- session list ----
-const SESS_CACHE_KEY = 'pi-web:sessions:v1';
+// ---- session list: DSH-style workspace groups (project header + rows) ----
+const SESS_CACHE_KEY = 'pi-web:sessions:v2';
+const COLLAPSE_KEY = 'pi-web-collapsed-groups';
+let collapsedGroups = new Set();
+try { collapsedGroups = new Set(JSON.parse(localStorage.getItem(COLLAPSE_KEY) || '[]')); } catch {}
+let filterCurrent = false;
+
+const FOLDER_SVG = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1.9 4.6c0-.7.6-1.2 1.2-1.2h3l1.3 1.5h5.5c.7 0 1.2.5 1.2 1.2v5.8c0 .7-.5 1.2-1.2 1.2H3.1c-.6 0-1.2-.5-1.2-1.2V4.6Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
+const CARET_SVG = '<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3.4 1.8 6.6 5l-3.2 3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+function workspaceName(cwd) {
+  if (!cwd) return '未命名工作区';
+  return basename(cwd) || cwd;
+}
+
 function applySessionsData(sessions, projects, current) {
   allSessions = sessions; allProjects = projects; currentCwd = current;
 
-  // current project card
-  const curProj = projects.find(p => p.cwd === currentCwd);
-  if (curProj) {
-    projName.textContent = basename(curProj.cwd);
-    projPath.textContent = curProj.cwd;
-  }
+  const q = (sessSearch.value || '').toLowerCase().trim();
+  const match = (s) => !q
+    || (s.name || s.firstMessage || '').toLowerCase().includes(q)
+    || workspaceName(s.cwd).toLowerCase().includes(q);
 
-  // current project's sessions
-  const q = (sessSearch.value || '').toLowerCase();
-  const curSessions = sessions
-    .filter(s => s.cwd === currentCwd)
-    .filter(s => !q || (s.name || s.firstMessage || '').toLowerCase().includes(q) || basename(s.cwd).toLowerCase().includes(q))
-    .sort((a,b) => b.updated - a.updated);
-  sessionsEl.innerHTML = '';
-  let bucket = null;
-  for (const s of curSessions) {
-    const b = dayBucket(s.updated);
-    if (b !== bucket) {
-      bucket = b;
-      const label = document.createElement('div');
-      label.className = 'sess-group';
-      label.textContent = b;
-      sessionsEl.appendChild(label);
-    }
-    sessionsEl.appendChild(renderSessItem(s));
+  const byCwd = new Map();
+  for (const s of sessions) {
+    const k = s.cwd || '';
+    if (!byCwd.has(k)) byCwd.set(k, []);
+    byCwd.get(k).push(s);
   }
+  const groups = [...byCwd.entries()]
+    .map(([cwd, list]) => {
+      list.sort((a, b) => b.updated - a.updated);
+      return { cwd, list, latest: list[0]?.updated || 0 };
+    })
+    .sort((a, b) => (a.cwd === current ? -1 : b.cwd === current ? 1 : b.latest - a.latest));
 
-  // other projects
-  const others = projects.filter(p => p.cwd !== currentCwd);
-  otherProjectsEl.innerHTML = '';
-  otherToggle.style.display = others.length ? '' : 'none';
-  for (const p of others) {
-    const n = p.count ?? sessions.filter(s => s.cwd === p.cwd).length;
-    const d = document.createElement('div');
-    d.className = 'other-proj-item';
-    d.innerHTML = `<span>📁 ${esc(basename(p.cwd))}</span><span class="count">${n}</span>`;
-    d.title = p.cwd;
-    d.onclick = async () => {
-      await jpost('/api/project/switch', { cwd: p.cwd });
-    };
-    otherProjectsEl.appendChild(d);
+  sessGroupsEl.innerHTML = '';
+  for (const g of groups) {
+    if (filterCurrent && g.cwd !== current) continue;
+    const rows = g.list.filter(match);
+    if (!rows.length) continue;
+    sessGroupsEl.appendChild(renderWorkspaceGroup(g, rows, current));
+  }
+  if (!sessGroupsEl.children.length) {
+    const empty = document.createElement('div');
+    empty.className = 'sess-empty';
+    empty.textContent = q ? '没有匹配的会话' : '还没有会话';
+    sessGroupsEl.appendChild(empty);
   }
 }
-const SESS_PAGE = 60;
-let sessTotal = 0;
-let sessLoadingMore = false;
+
+function renderWorkspaceGroup(g, rows, current) {
+  const wrap = document.createElement('div');
+  wrap.className = 'ws-group';
+  const collapsed = collapsedGroups.has(g.cwd);
+
+  const head = document.createElement('div');
+  head.className = 'proj-head' + (g.cwd === current ? ' active-proj' : '');
+  head.title = g.cwd || '未命名工作区';
+  head.innerHTML = `
+    <span class="proj-slot proj-folder${collapsed ? '' : ' is-open'}">${FOLDER_SVG}</span>
+    <span class="proj-slot proj-arrow">${CARET_SVG}</span>
+    <span class="proj-title">${esc(workspaceName(g.cwd))}</span>
+    <span class="proj-actions">
+      <button class="proj-tool" data-act="menu" title="更多">⋯</button>
+      <button class="proj-tool" data-act="new" title="在此工作区新建对话">＋</button>
+    </span>`;
+  head.onclick = async (ev) => {
+    const act = ev.target.closest('.proj-tool')?.dataset.act;
+    if (act === 'new') {
+      ev.stopPropagation();
+      if (g.cwd !== currentCwd) await jpost('/api/project/switch', { cwd: g.cwd });
+      await jpost('/api/session/new');
+      messagesEl.innerHTML = '';
+      setTimeout(refreshAll, 900);
+      return;
+    }
+    if (act === 'menu') { ev.stopPropagation(); openWorkspaceMenu(ev.target.closest('.proj-tool'), g); return; }
+    if (collapsedGroups.has(g.cwd)) collapsedGroups.delete(g.cwd);
+    else collapsedGroups.add(g.cwd);
+    try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...collapsedGroups])); } catch {}
+    applySessionsData(allSessions, allProjects, currentCwd);
+  };
+  wrap.appendChild(head);
+
+  if (!collapsed) {
+    const box = document.createElement('div');
+    box.className = 'sess-list';
+    for (const s of rows) box.appendChild(renderSessItem(s));
+    wrap.appendChild(box);
+  }
+  return wrap;
+}
+
+function openWorkspaceMenu(anchor, g) {
+  ctxMenu.innerHTML = `
+    <div class="ctx-item" data-act="switch">切换到这个工作区</div>
+    <div class="ctx-item" data-act="copy">复制路径</div>`;
+  const r = anchor.getBoundingClientRect();
+  ctxMenu.style.left = Math.min(r.left - 60, window.innerWidth - 200) + 'px';
+  ctxMenu.style.top = (r.bottom + 4) + 'px';
+  ctxMenu.classList.remove('hidden');
+  ctxMenu.querySelectorAll('.ctx-item').forEach((el) => {
+    el.onclick = async () => {
+      ctxMenu.classList.add('hidden');
+      if (el.dataset.act === 'switch') {
+        await jpost('/api/project/switch', { cwd: g.cwd });
+        messagesEl.innerHTML = '';
+        setTimeout(refreshAll, 1200);
+      } else if (el.dataset.act === 'copy') {
+        try { await navigator.clipboard.writeText(g.cwd); showToast('已复制路径', true); } catch {}
+      }
+    };
+  });
+}
 
 async function refreshSessions() {
   try {
-    // Cold-start: paint from localStorage instantly if available, then refresh from network.
     try {
       const cached = JSON.parse(localStorage.getItem(SESS_CACHE_KEY) || 'null');
       if (cached && Array.isArray(cached.sessions) && Array.isArray(cached.projects)) {
-        sessTotal = cached.total ?? cached.sessions.length;
         applySessionsData(cached.sessions, cached.projects, cached.current || currentCwd);
       }
     } catch {}
 
-    const { projects, current } = await jget('/api/projects');
-    const { sessions, total } = await jget(
-      `/api/sessions?limit=${SESS_PAGE}&offset=0&cwd=${encodeURIComponent(current)}`,
-    );
-    sessTotal = total ?? sessions.length;
+    const [{ sessions }, { projects, current }] = await Promise.all([
+      jget('/api/sessions'),
+      jget('/api/projects'),
+    ]);
     try {
-      localStorage.setItem(SESS_CACHE_KEY, JSON.stringify({ sessions, projects, current, total: sessTotal, at: Date.now() }));
+      localStorage.setItem(SESS_CACHE_KEY, JSON.stringify({ sessions, projects, current, at: Date.now() }));
     } catch {}
     applySessionsData(sessions, projects, current);
   } catch {}
 }
-
-// Sidebar pages: 60 rows up front, the rest appended when the list is scrolled.
-async function loadMoreSessions() {
-  if (sessLoadingMore) return;
-  if (allSessions.length >= sessTotal) return;
-  sessLoadingMore = true;
-  try {
-    const { sessions } = await jget(
-      `/api/sessions?limit=${SESS_PAGE}&offset=${allSessions.length}&cwd=${encodeURIComponent(currentCwd)}`,
-    );
-    if (!sessions.length) { sessTotal = allSessions.length; return; }
-    allSessions = [...allSessions, ...sessions];
-    applySessionsData(allSessions, allProjects, currentCwd);
-  } catch {}
-  finally { sessLoadingMore = false; }
-}
-
-sessionsEl.addEventListener('scroll', () => {
-  if (sessionsEl.scrollTop + sessionsEl.clientHeight >= sessionsEl.scrollHeight - 80) loadMoreSessions();
-}, { passive: true });
 
 function relTime(ms) {
   const diff = Date.now() - (ms || 0);
@@ -1019,11 +1053,12 @@ function dayBucket(ms) {
 function renderSessItem(s) {
   const d = document.createElement('div');
   d.className = 'sess-item' + (s.isCurrent ? ' active' : '');
-  const title = s.name || s.firstMessage || '(untitled)';
+  const title = s.name || s.firstMessage || '(空会话)';
+  d.title = title;
   d.innerHTML = `
-    <div class="sess-name">${esc(title)}<span class="sess-time">${relTime(s.updated)}</span></div>
-    ${s.lastMessage && s.lastMessage !== s.firstMessage ? `<div class="sess-preview">${esc(s.lastMessage).slice(0, 80)}</div>` : ''}
-    <div class="more-btn" title="More">⋮</div>`;
+    <span class="sess-title-text">${esc(title)}</span>
+    <span class="sess-time">${relTime(s.updated)}</span>
+    <span class="sess-tools"><button class="sess-tool more-btn" title="更多">⋯</button></span>`;
   d.onclick = async (ev) => {
     if (ev.target.classList.contains('more-btn')) return;
     if (s.isCurrent) return;
@@ -1130,68 +1165,6 @@ function openTreeMenu(ev, node) {
 }
 
 // ---- project picker popup ----
-async function openProjectMenu() {
-  await refreshSessions();
-  projMenu.innerHTML = '';
-
-  // Actions
-  const actOpen = document.createElement('div');
-  actOpen.className = 'ctx-item';
-  actOpen.innerHTML = '📂 <span style="margin-left:6px">Open existing folder…</span>';
-  actOpen.onclick = () => { projMenu.classList.add('hidden'); folderPicker.click(); };
-  projMenu.appendChild(actOpen);
-
-  const actNew = document.createElement('div');
-  actNew.className = 'ctx-item';
-  actNew.innerHTML = '＋ <span style="margin-left:6px">New blank project…</span>';
-  actNew.onclick = async () => {
-    projMenu.classList.add('hidden');
-    const home = currentCwd.startsWith('/Users/') ? currentCwd.split('/').slice(0,3).join('/') : (currentCwd || '/');
-    showModal('New project', `<p style="margin:0 0 4px;color:var(--text-3);font-size:12px">Absolute path to create the new project folder:</p><input type="text" id="newproj-input" value="${esc(home + '/')}" placeholder="/path/to/new-project" />`, [
-      { label: 'Cancel' },
-      { label: 'Create & open', primary: true, onClick: body => {
-        const p = body.querySelector('#newproj-input').value.trim();
-        if (p) { jpost('/api/project/create', { path: p }).then(() => { messagesEl.innerHTML = ''; setTimeout(refreshAll, 1500); }).catch(e => showModal('Error', `<p>${esc(e.message)}</p>`)); }
-      }}
-    ]);
-  };
-  projMenu.appendChild(actNew);
-
-  const sep = document.createElement('div'); sep.className = 'popup-sep'; projMenu.appendChild(sep);
-
-  let count = 0;
-  for (const p of allProjects) {
-    if (p.cwd === currentCwd) continue;
-    count++;
-    const d = document.createElement('div');
-    d.className = 'ctx-item';
-    d.style.flexDirection = 'column';
-    d.style.alignItems = 'flex-start';
-    d.innerHTML = `<div style="width:100%;display:flex;justify-content:space-between;gap:8px;align-items:center"><span style="font-weight:600">📁 ${esc(basename(p.cwd))}</span><span style="color:var(--text-3);font-weight:400;font-size:10.5px">${p.count}</span></div><div style="font-size:10.5px;color:var(--text-3);font-family:ui-monospace,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;margin-top:2px">${esc(p.cwd)}</div>`;
-    d.onclick = async () => {
-      await jpost('/api/project/switch', { cwd: p.cwd });
-      projMenu.classList.add('hidden');
-      messagesEl.innerHTML = '';
-      setTimeout(refreshAll, 1500);
-    };
-    projMenu.appendChild(d);
-  }
-  if (count === 0) {
-    const d = document.createElement('div');
-    d.className = 'ctx-item'; d.style.color = 'var(--text-3)'; d.style.cursor = 'default';
-    d.textContent = 'No other projects';
-    projMenu.appendChild(d);
-  }
-  const r = projRow.getBoundingClientRect();
-  projMenu.style.left = r.left + 'px';
-  projMenu.style.top = (r.bottom + 6) + 'px';
-  projMenu.style.minWidth = Math.max(r.width, 300) + 'px';
-  projMenu.classList.remove('hidden');
-}
-projRow.addEventListener('click', e => { e.stopPropagation(); openProjectMenu(); });
-projSwitch.addEventListener('click', e => { e.stopPropagation(); openProjectMenu(); });
-
-// Folder picker handling
 folderPicker.addEventListener('change', async () => {
   const files = folderPicker.files;
   if (!files || !files.length) return;
@@ -1542,10 +1515,35 @@ messagesEl.addEventListener('click', e => {
   const img = e.target.closest('.img-block img');
   if (img && img.closest('.msg.user') === null) openLightbox(img.src, img.alt);
 });
-otherToggle.addEventListener('click', () => {
-  otherProjectsEl.classList.toggle('hidden');
-  otherCaret.textContent = otherProjectsEl.classList.contains('hidden') ? '▸' : '▾';
+$('#sess-search-toggle')?.addEventListener('click', () => {
+  searchWrap.classList.toggle('hidden');
+  if (!searchWrap.classList.contains('hidden')) sessSearch.focus();
+  else { sessSearch.value = ''; applySessionsData(allSessions, allProjects, currentCwd); }
 });
+
+$('#sess-filter')?.addEventListener('click', (ev) => {
+  filterCurrent = !filterCurrent;
+  ev.currentTarget.classList.toggle('active', filterCurrent);
+  ev.currentTarget.setAttribute('aria-pressed', filterCurrent ? 'true' : 'false');
+  ev.currentTarget.title = filterCurrent ? '显示全部工作区' : '只看当前工作区';
+  applySessionsData(allSessions, allProjects, currentCwd);
+});
+
+$('#new-workspace')?.addEventListener('click', async () => {
+  showModal('新建工作区', '<input id="ws-path" type="text" placeholder="绝对路径，例如 /Users/you/code/new-project">', [
+    { label: '取消' },
+    { label: '创建', primary: true, onClick: async () => {
+        const p = document.getElementById('ws-path')?.value?.trim();
+        if (!p) return false;
+        try {
+          await jpost('/api/project/create', { path: p });
+          messagesEl.innerHTML = '';
+          setTimeout(refreshAll, 1200);
+        } catch (e) { showErrorToast('创建失败：' + (e.message || e)); return false; }
+      } },
+  ]);
+});
+
 $('#btn-new').addEventListener('click', async () => {
   await jpost('/api/session/new');
   messagesEl.innerHTML = ''; endStream(); chatTitle.textContent = 'New chat';

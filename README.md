@@ -29,7 +29,7 @@ pi is a terminal coding agent. `pi-web` serves a full chat front-end over HTTP +
 
 ## Features
 
-- **Session browser** — every session file under `~/.pi/agent/sessions/`, grouped by project directory, paged 60 at a time (a 406-session store returns 46KB per page instead of 275KB)
+- **Workspace browser** — sessions grouped by project directory, DSH-style: collapsible workspace rows (folder → caret on hover, ⋯ / ＋ actions), one-line session rows with a relative timestamp that swaps for the ⋯ button on hover
 - **Branch a conversation** — fork a session at any message, keep exploring without losing the original
 - **Live streaming** — token-by-token over WebSocket, with tool calls and thinking blocks rendered inline
 - **Model + thinking level switching** — from the composer, no restart
