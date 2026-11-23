@@ -2,6 +2,8 @@
 
 Codex-style web UI for [pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) — browse, fork and drive your pi sessions from any browser.
 
+![pi-web UI](docs/screenshot.png)
+
 pi is a terminal coding agent. `pi-web` serves a full chat front-end over HTTP + WebSocket, so you can keep long sessions running on a machine and talk to them from a laptop, phone, or tablet on the same network.
 
 ## Features
