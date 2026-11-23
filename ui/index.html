@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>π · web</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <aside id="sidebar">
+    <!-- Current project (large, top, clickable) -->
+    <div class="project-card" id="project-card">
+      <div class="project-row" id="project-row">
+        <span class="proj-icon">📁</span>
+        <div class="proj-main">
+          <div class="proj-label">PROJECT</div>
+          <div class="proj-name" id="proj-name">—</div>
+          <div class="proj-path" id="proj-path">—</div>
+        </div>
+        <button id="proj-switch" class="proj-switch" title="Switch project">⌄</button>
+      </div>
+    </div>
+
+    <!-- Action buttons -->
+    <div class="side-actions">
+      <button id="btn-new" class="action-btn" title="New chat (in current project)">＋ New chat</button>
+    </div>
+    <div class="search-wrap">
+      <input id="sess-search" type="text" placeholder="Search chats…" />
+    </div>
+
+    <!-- Chats for current project -->
+    <div class="section-label">CHATS</div>
+    <div id="current-sessions" class="sessions"></div>
+
+    <!-- Other projects (collapsible) -->
+    <div class="section-label clickable" id="other-toggle">
+      <span id="other-caret">▸</span> OTHER PROJECTS
+    </div>
+    <div id="other-projects" class="other-projects hidden"></div>
+
+    <div class="side-spacer"></div>
+
+    <!-- Footer: profile / settings -->
+    <div class="side-bottom">
+      <div class="profile-row">
+        <div class="avatar-sm">π</div>
+        <div class="profile-info">
+          <div class="profile-name">pi web</div>
+          <div class="profile-ver">v0.1</div>
+        </div>
+        <button id="settings-btn" class="icon-btn" title="Settings">⚙</button>
+      </div>
+    </div>
+  </aside>
+
+  <main>
+    <header id="topbar">
+      <div class="topbar-left">
+        <div id="chat-title" class="chat-title">New chat</div>
+      </div>
+      <div id="chat-meta" class="chat-meta"></div>
+      <button id="rb-toggle" class="rb-toggle-btn" title="Toggle tools panel">🗖</button>
+    </header>
+
+    <div id="messages"></div>
+
+    <footer id="composer-wrap">
+      <div class="composer-tools-top">
+        <div id="model-pill" class="pill" title="Switch model">
+          <span id="model-label">—</span>
+          <span class="caret">▾</span>
+          <div id="model-menu" class="popup-menu hidden"></div>
+        </div>
+        <div id="thinking-pill" class="pill" title="Thinking level">
+          <span id="thinking-label">medium</span>
+          <span class="caret">▾</span>
+          <div id="thinking-menu" class="popup-menu hidden"></div>
+        </div>
+      </div>
+      <form id="composer">
+        <textarea id="input" rows="1" placeholder="Message π…  (Enter to send, Shift+Enter for newline)"></textarea>
+        <button type="submit" id="btn-send" title="Send">➤</button>
+      </form>
+      <div id="footer-status" class="footer-status"></div>
+    </footer>
+  </main>
+
+  <!-- WORK AREA: tabbed editor/browser/terminal + optional file tree -->
+  <section id="workbar" class="open">
+    <!-- Drag handle to resize workbar -->
+    <div class="work-resize" id="work-resize" title="Drag to resize"></div>
+
+    <!-- Tab strip + content -->
+    <div class="work-main">
+      <div class="work-tabs" id="work-tabs">
+        <div class="work-tabs-left" id="work-tabs-list"></div>
+        <div class="work-tabs-right">
+          <button class="work-tab-add" id="work-tab-add" title="New tab">＋</button>
+        </div>
+      </div>
+      <div class="work-content" id="work-content">
+        <!-- Empty placeholder: Codex-style tool picker -->
+        <div class="work-empty" id="work-empty">
+          <div class="work-empty-ico">🗖</div>
+          <div class="work-empty-title">工具</div>
+          <div class="work-empty-sub">选择要打开的工具</div>
+          <div class="tool-list">
+            <div class="tool-item" data-kind="terminal">
+              <span class="tool-ico">⌨</span>
+              <span class="tool-name">终端</span>
+              <span class="tool-hint">⌘`</span>
+            </div>
+            <div class="tool-item" data-kind="browser">
+              <span class="tool-ico">🌐</span>
+              <span class="tool-name">浏览器</span>
+              <span class="tool-hint">⌘⇧B</span>
+            </div>
+            <div class="tool-item" data-kind="file">
+              <span class="tool-ico">📄</span>
+              <span class="tool-name">打开文件</span>
+              <span class="tool-hint">⌘P</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- File tree (right column, only visible when a file tab is active) -->
+    <div class="work-tree" id="work-tree">
+      <div class="tree-header">
+        <input id="tree-search" class="tree-search" placeholder="筛选文件…" spellcheck="false" />
+        <button class="fs-btn" id="tree-reload" title="Refresh">⟳</button>
+      </div>
+      <div class="tree-root" id="tree-root"></div>
+    </div>
+
+    <!-- Tab "new" menu -->
+    <div id="newtab-menu" class="ctx-menu hidden">
+      <div class="ctx-item" data-kind="terminal">⌨ 终端</div>
+      <div class="ctx-item" data-kind="browser">🌐 浏览器</div>
+      <div class="ctx-item" data-kind="file">📄 打开文件…</div>
+    </div>
+  </section>
+
+  <!-- chat context menu -->
+  <div id="ctx-menu" class="ctx-menu hidden">
+    <div class="ctx-item" data-act="rename">Rename</div>
+    <div class="ctx-item danger" data-act="delete">Delete</div>
+  </div>
+
+  <!-- project switcher popup -->
+  <div id="proj-menu" class="ctx-menu hidden" style="min-width:300px;max-height:360px;overflow-y:auto"></div>
+
+  <!-- hidden folder picker for "open folder" -->
+  <input type="file" id="folder-picker" webkitdirectory directory multiple style="display:none" />
+
+  <!-- custom modal dialog -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-title" id="modal-title">Title</div>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-actions" id="modal-actions"></div>
+    </div>
+  </div>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

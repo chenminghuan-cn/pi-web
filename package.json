@@ -1,0 +1,38 @@
+{
+  "name": "pi-web",
+  "version": "0.1.0",
+  "description": "Codex-style web UI for pi — browse, fork and drive your pi sessions from a browser",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "pi-web": "./bin/pi-web.mjs"
+  },
+  "files": [
+    "index.ts",
+    "ws-lite.ts",
+    "ui",
+    "bin"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "start": "node bin/pi-web.mjs"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.84.0",
+    "jiti": "^2.7.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "pi",
+    "pi-coding-agent",
+    "web-ui",
+    "coding-agent",
+    "websocket"
+  ]
+}
