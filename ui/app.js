@@ -22,18 +22,27 @@ function basename(p) { return (p || '').split('/').filter(Boolean).pop() || p; }
 function shortModel(m) { return m ? (m.name || `${m.provider}/${m.id}`) : '—'; }
 
 // ---- rendering ----
+// Escape first, then apply the inline markdown subset. Doing it the other way
+// round escapes the tags we just emitted, so `<code>` shows up as literal text.
+function inlineMd(s) {
+  let out = esc(s);
+  out = out.replace(/`([^`]+)`/g, (_, x) => `<code>${x}</code>`);
+  out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  out = out.replace(/(^|[^*\w])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+  out = out.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+  return out.replace(/\n/g, '<br>');
+}
+
 function renderInline(text) {
   const parts = [];
   const re = /```([\w-]*)\n([\s\S]*?)```/g;
   let last = 0, m;
   while ((m = re.exec(text)) !== null) {
-    parts.push(esc(text.slice(last, m.index)).replace(/\n/g, '<br>'));
+    parts.push(inlineMd(text.slice(last, m.index)));
     parts.push(`<pre><code>${esc(m[2])}</code></pre>`);
     last = m.index + m[0].length;
   }
-  let tail = text.slice(last);
-  tail = tail.replace(/`([^`]+)`/g, (_, x) => `<code>${esc(x)}</code>`);
-  parts.push(esc(tail).replace(/\n/g, '<br>'));
+  parts.push(inlineMd(text.slice(last)));
   return parts.join('');
 }
 // Render an ImageContent blob as an <img>. Accepts either raw base64 + mimeType

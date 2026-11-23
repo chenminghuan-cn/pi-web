@@ -775,3 +775,9 @@ main { position: relative; }
 .round-tick.active { background: var(--accent); width: 16px; }
 .round-rail:hover .round-tick { background: rgba(255,255,255,.28); }
 .round-rail:hover .round-tick.active { background: var(--accent); }
+
+/* ---- inline markdown ---- */
+.body code, .msg .body code { background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.06); border-radius: 5px; padding: 1px 5px; font-family: ui-monospace, Menlo, monospace; font-size: .92em; color: #9fe8c8; }
+.body strong { color: var(--text); font-weight: 650; }
+.body em { font-style: italic; color: var(--text); }
+.body a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
