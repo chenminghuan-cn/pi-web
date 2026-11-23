@@ -80,6 +80,9 @@ function sessionDb(): Promise<any | null> {
         "CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT)",
         "CREATE TABLE IF NOT EXISTS sessions (path TEXT PRIMARY KEY, cwd TEXT, name TEXT, first_message TEXT, last_message TEXT, message_count INTEGER, updated INTEGER, created INTEGER)",
         "CREATE INDEX IF NOT EXISTS idx_sessions_cwd ON sessions(cwd, updated DESC)",
+        // Archive flags live here, not in pi's JSONL: archiving is a pi-web view
+        // decision and must survive an index rebuild.
+        "CREATE TABLE IF NOT EXISTS session_archive (file TEXT PRIMARY KEY, at INTEGER NOT NULL)",
       ].join("; "));
       // Schema upgrades: the index is disposable, so just wipe it.
       const version = db.prepare("SELECT v FROM meta WHERE k = 'schema'").get()?.v;
@@ -164,6 +167,16 @@ function readSessionIndex(db: any): any[] {
     }
   } catch {}
   return out;
+}
+
+async function archivedSessionFiles(): Promise<Set<string>> {
+  const db = await sessionDb();
+  if (!db) return new Set();
+  try {
+    return new Set((db.prepare("SELECT file FROM session_archive").all() as any[]).map((r) => r.file));
+  } catch {
+    return new Set();
+  }
 }
 
 async function listSessionsCached(): Promise<any[]> {
@@ -386,7 +399,7 @@ export default function (pi: ExtensionAPI) {
 
     routes.length = 0;
     route("GET", /^\/$/, async (_r, res) => sendText(res, 200, await readFile(join(__dirname, "ui", "index.html"), "utf8"), "text/html"));
-    route("GET", /^\/(app\.js|app\.css)$/, async (_r, res, _b, m) => {
+    route("GET", /^\/(app\.js|app\.css|sess-list\.css|sidebar-dsh\.css)$/, async (_r, res, _b, m) => {
       const f = m![1]; sendText(res, 200, await readFile(join(__dirname, "ui", f), "utf8"), f.endsWith(".js") ? "application/javascript" : "text/css");
     });
 
@@ -467,11 +480,13 @@ export default function (pi: ExtensionAPI) {
         const offset = Math.max(0, Number(q.searchParams.get("offset")) || 0);
         const all = await listSessionsCached();
         const st = await rpc!.send({ type: "get_state" });
+        const archived = await archivedSessionFiles();
         const mapped = all.map((s: any) => ({
           file: s.path, name: s.name, cwd: s.cwd,
           firstMessage: s.firstMessage, lastMessage: s.lastMessage,
           messageCount: s.messageCount, updated: s.updated ?? s.created, created: s.created,
           isCurrent: s.path === st.sessionFile && s.cwd === rpcCwd,
+          archived: archived.has(s.path),
         })).sort((a: any, b: any) => b.updated - a.updated);
         // ?cwd= scopes to one project before paging — the sidebar only shows the
         // current project, so a global page would miss it entirely.
@@ -492,6 +507,17 @@ export default function (pi: ExtensionAPI) {
       try { const r = await rpc!.send({ type: "set_session_name", name: b.name }); invalidateSessCache(true); sendJson(res, 200, r); }
       catch (e: any) { sendJson(res, 500, { error: String(e) }); }
     });
+    route("POST", /^\/api\/sessions\/archive$/, async (_r, res, b) => {
+      try {
+        if (!b?.file) return sendJson(res, 400, { error: "file required" });
+        const db = await sessionDb();
+        if (!db) return sendJson(res, 500, { error: "session store unavailable" });
+        if (b.archived === false) db.prepare("DELETE FROM session_archive WHERE file = ?").run(String(b.file));
+        else db.prepare("INSERT OR REPLACE INTO session_archive (file, at) VALUES (?, ?)").run(String(b.file), Date.now());
+        sendJson(res, 200, { ok: true, archived: b.archived !== false });
+      } catch (e: any) { sendJson(res, 500, { error: String(e?.message ?? e) }); }
+    });
+
     route("POST", /^\/api\/sessions\/delete$/, async (_r, res, b) => {
       try {
         const { rm, existsSync } = await import("node:fs/promises");

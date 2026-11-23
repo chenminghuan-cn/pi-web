@@ -190,7 +190,7 @@ chatTitle.addEventListener('dblclick', async () => {
   if (!st?.sessionFile) return;
   renameSession({ file: st.sessionFile, name: chatTitle.textContent });
 });
-const sessGroupsEl = $('#sess-groups'), sessScrollEl = $('#sess-scroll'), searchWrap = $('#search-wrap');
+const sessGroupsEl = $('#current-sessions');
 const sessSearch = $('#sess-search');
 const projMenu = $('#proj-menu');
 const folderPicker = $('#folder-picker');
@@ -889,15 +889,37 @@ async function refreshThinkingMenu() {
   } catch {}
 }
 
-// ---- session list: DSH-style workspace groups (project header + rows) ----
-const SESS_CACHE_KEY = 'pi-web:sessions:v2';
+// ---- session list: layout ported from pi-agent's sidebar ----
+const SESS_CACHE_KEY = 'pi-web:sessions:v3';
 const COLLAPSE_KEY = 'pi-web-collapsed-groups';
 let collapsedGroups = new Set();
 try { collapsedGroups = new Set(JSON.parse(localStorage.getItem(COLLAPSE_KEY) || '[]')); } catch {}
 let filterCurrent = false;
 
-const FOLDER_SVG = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1.9 4.6c0-.7.6-1.2 1.2-1.2h3l1.3 1.5h5.5c.7 0 1.2.5 1.2 1.2v5.8c0 .7-.5 1.2-1.2 1.2H3.1c-.6 0-1.2-.5-1.2-1.2V4.6Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
-const CARET_SVG = '<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3.4 1.8 6.6 5l-3.2 3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+// DSH icon set, copied from pi-agent's dsh-icons.js — same paths, same 16px box.
+const dshBox = (size, body, stroke = 1) => `<svg viewBox="0 0 16 16" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+const I_FOLDER_CLOSE = '<path d="M1.50439 3.11059C1.50439 2.55831 1.95211 2.1106 2.50439 2.1106H5.43389C5.67773 2.1106 5.91318 2.19969 6.09593 2.36113L7.71649 3.79265C7.89924 3.95409 8.1347 4.04319 8.3785 4.04319H13.4958C14.0481 4.04319 14.4958 4.4909 14.4958 5.04319V12.8894C14.4958 13.4417 14.0481 13.8894 13.4958 13.8894H2.50439C1.95211 13.8894 1.50439 13.4417 1.50439 12.8894V4.04319V3.11059Z"/><path d="M3.63501 7.66614H12.3647"/>';
+const I_FOLDER_OPEN = '<path d="M12.3994 13.5986H2.0498C1.49752 13.5986 1.0498 13.1509 1.0498 12.5986V3.40137C1.0498 2.84908 1.49752 2.40137 2.0498 2.40137H4.7666C5.01044 2.40137 5.24588 2.49046 5.42864 2.6519L6.94116 3.98799C7.12391 4.14943 7.35936 4.23852 7.6032 4.23852H12.3994C12.9517 4.23852 13.3994 4.68624 13.3994 5.23852V7.16991"/><path d="M2.55911 7.93683C2.67584 7.49906 3.07229 7.19446 3.52536 7.19446H13.6491C14.3061 7.19446 14.7846 7.81725 14.6153 8.45209L13.4411 12.856C13.3244 13.2938 12.9279 13.5984 12.4748 13.5984H2.35113C1.69411 13.5984 1.21562 12.9756 1.38489 12.3407L2.55911 7.93683Z"/>';
+const I_ARROW = '<path d="M5.5 4.5C5.5 4.40714 5.52586 4.31612 5.57467 4.23713C5.62349 4.15815 5.69334 4.09431 5.77639 4.05279C5.85945 4.01126 5.95242 3.99368 6.0449 4.00202C6.13738 4.01036 6.22572 4.04429 6.3 4.1L10.967 7.6C11.0291 7.64657 11.0795 7.70697 11.1142 7.77639C11.1489 7.84582 11.167 7.92238 11.167 8C11.167 8.07762 11.1489 8.15418 11.1142 8.22361C11.0795 8.29303 11.0291 8.35343 10.967 8.4L6.3 11.9C6.22572 11.9557 6.13738 11.9896 6.0449 11.998C5.95242 12.0063 5.85945 11.9887 5.77639 11.9472C5.69334 11.9057 5.62349 11.8419 5.57467 11.7629C5.52586 11.6839 5.5 11.5929 5.5 11.5V4.5Z" fill="currentColor" stroke="none"/>';
+const I_ARCHIVE = '<path d="M13.5 2.5H2.5C1.94772 2.5 1.5 2.94772 1.5 3.5V4.5C1.5 5.05228 1.94772 5.5 2.5 5.5H13.5C14.0523 5.5 14.5 5.05228 14.5 4.5V3.5C14.5 2.94772 14.0523 2.5 13.5 2.5Z"/><path d="M2.5 5.5V13.5C2.5 13.7652 2.60536 14.0196 2.79289 14.2071C2.98043 14.3946 3.23478 14.5 3.5 14.5H12.5C12.7652 14.5 13.0196 14.3946 13.2071 14.2071C13.3946 14.0196 13.5 13.7652 13.5 13.5V5.5"/><path d="M6.5 9.5H9.5"/>';
+const I_NEW_CHAT = '<path d="M2.37091 11.2501C1.58745 9.89288 1.32067 8.29835 1.61969 6.76006C1.91872 5.22177 2.76342 3.8433 3.99826 2.87846C5.2331 1.91362 6.77494 1.42737 8.33988 1.50925C9.90482 1.59113 11.3875 2.23562 12.5149 3.32406C13.6425 4.41269 14.3387 5.87206 14.4754 7.4334C14.612 8.99474 14.18 10.5529 13.2587 11.8209C12.3375 13.0888 10.9891 13.9813 9.46194 14.3337C8.18691 14.628 6.85895 14.5294 5.64989 14.0605C5.1712 13.8748 4.76962 13.4932 4.26534 13.3967C3.67413 13.2835 2.95257 13.5598 2.03794 14.3337"/><path d="M8 5V11"/><path d="M5 8H11"/>';
+const I_ELLIPSIS = '<path d="M3 9C3.55228 9 4 8.55228 4 8C4 7.44772 3.55228 7 3 7C2.44772 7 2 7.44772 2 8C2 8.55228 2.44772 9 3 9Z" fill="currentColor" stroke="none"/><path d="M8 9C8.55228 9 9 8.55228 9 8C9 7.44772 8.55228 7 8 7C7.44772 7 7 7.44772 7 8C7 8.55228 7.44772 9 8 9Z" fill="currentColor" stroke="none"/><path d="M13 9C13.5523 9 14 8.55228 14 8C14 7.44772 13.5523 7 13 7C12.4477 7 12 7.44772 12 8C12 8.55228 12.4477 9 13 9Z" fill="currentColor" stroke="none"/>';
+const dshFolder = (open, size = 15) => dshBox(size, open ? I_FOLDER_OPEN : I_FOLDER_CLOSE);
+const dshArrow = (size = 14) => dshBox(size, I_ARROW);
+const dshNewChat = (size = 16) => dshBox(size, I_NEW_CHAT);
+const dshArchive = (size = 14) => dshBox(size, I_ARCHIVE);
+const dshEllipsis = (size = 14) => dshBox(size, I_ELLIPSIS);
+
+// toolbar icons (identical paths to pi-agent's ICONS_WS)
+const WS_ICONS = {
+  search: '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>',
+  list: '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><circle cx="11" cy="7" r="2.2" fill="var(--bg,#fff)"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="13" cy="17" r="2.2" fill="var(--bg,#fff)"/></svg>',
+  ws: '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>',
+};
+
+function projLeading(collapsed) {
+  return '<span class="proj-slot proj-folder' + (collapsed ? '' : ' is-open') + '">' + dshFolder(!collapsed, 15) + '</span><span class="proj-slot proj-arrow">' + dshArrow(14) + '</span>';
+}
 
 function workspaceName(cwd) {
   if (!cwd) return '未命名工作区';
@@ -911,76 +933,148 @@ function applySessionsData(sessions, projects, current) {
   const match = (s) => !q
     || (s.name || s.firstMessage || '').toLowerCase().includes(q)
     || workspaceName(s.cwd).toLowerCase().includes(q);
+  const searchActive = !!q;
 
-  const byCwd = new Map();
+  const groups = new Map();
+  const order = [];
   for (const s of sessions) {
-    const k = s.cwd || '';
-    if (!byCwd.has(k)) byCwd.set(k, []);
-    byCwd.get(k).push(s);
+    if (s.archived) continue;
+    const key = (s.cwd || '').replace(/\/+$/, '');
+    if (!groups.has(key)) { groups.set(key, []); order.push(key); }
+    groups.get(key).push(s);
   }
-  const groups = [...byCwd.entries()]
-    .map(([cwd, list]) => {
-      list.sort((a, b) => b.updated - a.updated);
-      return { cwd, list, latest: list[0]?.updated || 0 };
-    })
-    .sort((a, b) => (a.cwd === current ? -1 : b.cwd === current ? 1 : b.latest - a.latest));
+  // newest activity first, current workspace pinned on top
+  const keyOf = (p) => String(p.cwd || '').replace(/\/+$/, '');
+  const curKey = String(current || '').replace(/\/+$/, '');
+  if (current && !groups.has(curKey)) { groups.set(curKey, []); order.unshift(curKey); }
+  const visibleProjs = (projects.length ? projects.slice() : order.map((cwd) => ({ cwd })))
+    .filter((p) => !searchActive || filterCurrent || (groups.get(keyOf(p)) || []).some(match))
+    .sort((a, b) => (keyOf(a) === curKey ? -1 : keyOf(b) === curKey ? 1 : 0));
 
   sessGroupsEl.innerHTML = '';
-  for (const g of groups) {
-    if (filterCurrent && g.cwd !== current) continue;
-    const rows = g.list.filter(match);
-    if (!rows.length) continue;
-    sessGroupsEl.appendChild(renderWorkspaceGroup(g, rows, current));
-  }
-  if (!sessGroupsEl.children.length) {
+  if (!visibleProjs.length) {
     const empty = document.createElement('div');
     empty.className = 'sess-empty';
-    empty.textContent = q ? '没有匹配的会话' : '还没有会话';
+    empty.textContent = searchActive ? '没有匹配的会话' : '还没有会话';
     sessGroupsEl.appendChild(empty);
   }
+  for (const p of visibleProjs) {
+    if (filterCurrent && keyOf(p) !== curKey) continue;
+    const rows = (groups.get(keyOf(p)) || []).filter(match);
+    if (searchActive && !rows.length) continue;
+    sessGroupsEl.appendChild(renderProjectNode(p, rows, searchActive));
+  }
+
+  // archived sessions are still reachable, in their own collapsed node
+  const archivedRows = sessions.filter((s) => s.archived && match(s));
+  if (archivedRows.length) sessGroupsEl.appendChild(renderArchiveNode(archivedRows));
 }
 
-function renderWorkspaceGroup(g, rows, current) {
-  const wrap = document.createElement('div');
-  wrap.className = 'ws-group';
-  const collapsed = collapsedGroups.has(g.cwd);
+function renderArchiveNode(rows) {
+  const key = '__archived__';
+  const collapsed = !collapsedGroups.has(key);
+  const node = document.createElement('div');
+  node.className = 'proj-node archive-node';
+  const head = document.createElement('div');
+  head.className = 'proj-head';
+  head.innerHTML = '<span class="proj-caret">' + projLeading(collapsed) + '</span>'
+    + '<span class="proj-title">已归档</span>'
+    + '<span class="proj-count">' + rows.length + '</span>';
+  head.title = '归档的会话不在工作区列表里显示';
+  head.onclick = () => {
+    if (collapsedGroups.has(key)) collapsedGroups.delete(key);
+    else collapsedGroups.add(key);
+    try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...collapsedGroups])); } catch {}
+    applySessionsData(allSessions, allProjects, currentCwd);
+  };
+  const children = document.createElement('div');
+  children.className = 'proj-children' + (collapsed ? ' collapsed' : '');
+  for (const s of rows) children.appendChild(renderSessItem(s));
+  node.appendChild(head);
+  node.appendChild(children);
+  return node;
+}
+
+function projIsCollapsed(key, hasSessions, searchActive) {
+  if (searchActive) return false;
+  return collapsedGroups.has(key);
+}
+
+function renderProjectNode(p, projSessions, searchActive) {
+  const key = String(p.cwd || '').replace(/\/+$/, '');
+  const active = key === String(currentCwd || '').replace(/\/+$/, '');
+  const collapsed = projIsCollapsed(key, projSessions.length > 0, searchActive);
+  const node = document.createElement('div');
+  node.className = 'proj-node' + (active ? ' active-proj' : '');
+  node.dataset.cwd = key;
 
   const head = document.createElement('div');
-  head.className = 'proj-head' + (g.cwd === current ? ' active-proj' : '');
-  head.title = g.cwd || '未命名工作区';
-  head.innerHTML = `
-    <span class="proj-slot proj-folder${collapsed ? '' : ' is-open'}">${FOLDER_SVG}</span>
-    <span class="proj-slot proj-arrow">${CARET_SVG}</span>
-    <span class="proj-title">${esc(workspaceName(g.cwd))}</span>
-    <span class="proj-actions">
-      <button class="proj-tool" data-act="menu" title="更多">⋯</button>
-      <button class="proj-tool" data-act="new" title="在此工作区新建对话">＋</button>
-    </span>`;
+  head.className = 'proj-head';
+  head.innerHTML = '<span class="proj-caret">' + projLeading(collapsed) + '</span>'
+    + '<span class="proj-title">' + esc(workspaceName(p.cwd)) + '</span>'
+    + '<span class="proj-actions">'
+    + '<button type="button" class="proj-act proj-more" title="更多" aria-label="更多">' + dshEllipsis(16) + '</button>'
+    + '<button type="button" class="proj-act proj-new" title="新建对话" aria-label="新建对话">' + dshNewChat(16) + '</button>'
+    + '</span>';
+
+  const children = document.createElement('div');
+  children.className = 'proj-children' + (collapsed ? ' collapsed' : '');
+  for (const s of projSessions) children.appendChild(renderSessItem(s));
+
+  const animateChildren = (collapse) => {
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    if (reduceMotion) { children.classList.toggle('collapsed', collapse); return; }
+    children.classList.add('animating');
+    const finish = () => {
+      if (collapse) children.classList.add('collapsed');
+      children.style.height = '';
+      children.style.opacity = '';
+      children.classList.remove('animating');
+    };
+    if (collapse) {
+      children.style.height = children.scrollHeight + 'px';
+      requestAnimationFrame(() => {
+        children.style.height = '0px';
+        children.style.opacity = '0';
+        setTimeout(finish, 210);
+      });
+    } else {
+      children.classList.remove('collapsed');
+      const h = children.scrollHeight;
+      children.style.height = '0px';
+      children.style.opacity = '0';
+      requestAnimationFrame(() => {
+        children.style.height = h + 'px';
+        children.style.opacity = '1';
+        setTimeout(finish, 210);
+      });
+    }
+  };
+
   head.onclick = async (ev) => {
-    const act = ev.target.closest('.proj-tool')?.dataset.act;
-    if (act === 'new') {
+    const act = ev.target.closest('.proj-act');
+    if (act?.classList.contains('proj-new')) {
       ev.stopPropagation();
-      if (g.cwd !== currentCwd) await jpost('/api/project/switch', { cwd: g.cwd });
+      if (key && key !== String(currentCwd || '').replace(/\/+$/, '')) {
+        await jpost('/api/project/switch', { cwd: key });
+      }
       await jpost('/api/session/new');
       messagesEl.innerHTML = '';
       setTimeout(refreshAll, 900);
       return;
     }
-    if (act === 'menu') { ev.stopPropagation(); openWorkspaceMenu(ev.target.closest('.proj-tool'), g); return; }
-    if (collapsedGroups.has(g.cwd)) collapsedGroups.delete(g.cwd);
-    else collapsedGroups.add(g.cwd);
+    if (act?.classList.contains('proj-more')) { ev.stopPropagation(); openWorkspaceMenu(act, { cwd: key }); return; }
+    const nowCollapsed = !collapsedGroups.has(key);
+    if (nowCollapsed) collapsedGroups.add(key); else collapsedGroups.delete(key);
     try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...collapsedGroups])); } catch {}
-    applySessionsData(allSessions, allProjects, currentCwd);
+    const folder = head.querySelector('.proj-folder');
+    folder?.classList.toggle('is-open', !nowCollapsed);
+    animateChildren(nowCollapsed);
   };
-  wrap.appendChild(head);
 
-  if (!collapsed) {
-    const box = document.createElement('div');
-    box.className = 'sess-list';
-    for (const s of rows) box.appendChild(renderSessItem(s));
-    wrap.appendChild(box);
-  }
-  return wrap;
+  node.appendChild(head);
+  node.appendChild(children);
+  return node;
 }
 
 function openWorkspaceMenu(anchor, g) {
@@ -1052,13 +1146,19 @@ function dayBucket(ms) {
 
 function renderSessItem(s) {
   const d = document.createElement('div');
-  d.className = 'sess-item' + (s.isCurrent ? ' active' : '');
-  const title = s.name || s.firstMessage || '(空会话)';
+  d.className = 'sess-item' + (s.isCurrent ? ' active' : '') + (s.archived ? ' archived' : '');
+  d.dataset.file = s.file;
+  d.dataset.cwd = s.cwd || '';
+  const title = s.name || s.firstMessage || '(untitled)';
   d.title = title;
   d.innerHTML = `
+    <span class="sess-slot"></span>
     <span class="sess-title-text">${esc(title)}</span>
     <span class="sess-time">${relTime(s.updated)}</span>
-    <span class="sess-tools"><button class="sess-tool more-btn" title="更多">⋯</button></span>`;
+    <div class="sess-tools">
+      <div class="more-btn" title="更多">${dshEllipsis(16)}</div>
+      <button type="button" class="sess-tool arch" title="${s.archived ? '取消归档' : '归档'}">${dshArchive(14)}</button>
+    </div>`;
   d.onclick = async (ev) => {
     if (ev.target.classList.contains('more-btn')) return;
     if (s.isCurrent) return;
@@ -1069,7 +1169,13 @@ function renderSessItem(s) {
   };
   d.querySelector('.more-btn').onclick = ev => {
     ev.stopPropagation();
+    d.classList.add('menu-on');
     openCtxMenu(ev.target, s);
+  };
+  d.querySelector('.sess-tool.arch').onclick = async (ev) => {
+    ev.stopPropagation();
+    await setArchived(s.file, !s.archived);
+    showToast(s.archived ? '已恢复' : '已归档，可在列表底部「已归档」找回', true);
   };
   d.ondblclick = (ev) => {
     ev.preventDefault();
@@ -1092,9 +1198,13 @@ function renameSession(s) {
 }
 
 function openCtxMenu(anchor, s) {
-  ctxMenu.innerHTML = `
-    <div class="ctx-item" data-act="rename">重命名</div>
-    <div class="ctx-item danger" data-act="delete">删除</div>`;
+  ctxMenu.innerHTML = s.archived
+    ? `<div class="ctx-item" data-act="unarchive">恢复</div>
+       <div class="ctx-item" data-act="rename">重命名</div>
+       <div class="ctx-item danger" data-act="delete">删除</div>`
+    : `<div class="ctx-item" data-act="archive">归档</div>
+       <div class="ctx-item" data-act="rename">重命名</div>
+       <div class="ctx-item danger" data-act="delete">删除</div>`;
   const r = anchor.getBoundingClientRect();
   ctxMenu.style.left = (r.left - 140) + 'px';
   ctxMenu.style.top = (r.bottom + 4) + 'px';
@@ -1103,7 +1213,13 @@ function openCtxMenu(anchor, s) {
     el.onclick = async () => {
       ctxMenu.classList.add('hidden');
       const title = s.name || s.firstMessage || s.file;
-      if (el.dataset.act === 'rename') {
+      if (el.dataset.act === 'archive') {
+        await setArchived(s.file, true);
+        showToast('已归档，可在列表底部的「已归档」里找回', true);
+      } else if (el.dataset.act === 'unarchive') {
+        await setArchived(s.file, false);
+        showToast('已恢复', true);
+      } else if (el.dataset.act === 'rename') {
         renameSession(s);
       } else if (el.dataset.act === 'delete') {
         showModal('删除会话', `删除「${esc(title)}」？文件会被移到废纸篓。`, [
@@ -1543,6 +1659,83 @@ $('#new-workspace')?.addEventListener('click', async () => {
       } },
   ]);
 });
+
+// ---- toolbar (search / filter / workspace) ----
+const WS_BTN_MAP = [
+  ['#ws-search', '搜索会话', WS_ICONS.search, () => enterSearch()],
+  ['#ws-list', '只看当前工作区', WS_ICONS.list, () => toggleFilter()],
+  ['#ws-ws', '工作区', WS_ICONS.ws, () => openWorkspacePicker()],
+];
+function mountWsButtons() {
+  for (const [sel, tip, icon, onClick] of WS_BTN_MAP) {
+    const host = $(sel);
+    if (!host || host.dataset.mounted) continue;
+    host.dataset.mounted = '1';
+    host.innerHTML = `<button type="button" title="${tip}" aria-label="${tip}">${icon}</button>`;
+    host.addEventListener('click', onClick);
+  }
+  const ic = $('#ws-search-ic');
+  if (ic) ic.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>';
+  const x = $('#ws-search-x');
+  if (x) x.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>';
+  const ni = $('#new-sess-icon');
+  if (ni) ni.innerHTML = dshNewChat(16);
+}
+mountWsButtons();
+
+const wsSearchBox = $('#ws-search-box');
+function enterSearch() { wsSearchBox?.classList.add('open'); sessSearch?.focus(); }
+function exitSearch() {
+  wsSearchBox?.classList.remove('open');
+  if (sessSearch) sessSearch.value = '';
+  applySessionsData(allSessions, allProjects, currentCwd);
+}
+$('#ws-search-x')?.addEventListener('click', exitSearch);
+sessSearch?.addEventListener('input', () => applySessionsData(allSessions, allProjects, currentCwd));
+sessSearch?.addEventListener('keydown', (e) => { if (e.key === 'Escape') exitSearch(); });
+
+function toggleFilter() {
+  filterCurrent = !filterCurrent;
+  const btn = $('#ws-list button');
+  btn?.classList.toggle('on', filterCurrent);
+  if (btn) btn.title = filterCurrent ? '显示全部工作区' : '只看当前工作区';
+  applySessionsData(allSessions, allProjects, currentCwd);
+}
+
+function openWorkspacePicker() {
+  showModal('工作区', `
+    <div class="ws-pick">${(allProjects || []).map((p) => `
+      <button class="ws-pick-row" data-cwd="${esc(p.cwd)}">
+        <span class="ws-pick-name">${esc(workspaceName(p.cwd))}</span>
+        <span class="ws-pick-path">${esc(p.cwd)}</span>
+      </button>`).join('') || '<div class="mm-empty">还没有工作区</div>'}</div>`, [
+    { label: '取消' },
+    { label: '新建…', primary: true, onClick: () => { openNewWorkspace(); } },
+  ]);
+  modalBody.querySelectorAll('.ws-pick-row').forEach((el) => {
+    el.onclick = async () => {
+      closeModal();
+      await jpost('/api/project/switch', { cwd: el.dataset.cwd });
+      messagesEl.innerHTML = '';
+      setTimeout(refreshAll, 1200);
+    };
+  });
+}
+
+function openNewWorkspace() {
+  showModal('新建工作区', '<input id="ws-path" type="text" placeholder="绝对路径，例如 /Users/you/code/new-project">', [
+    { label: '取消' },
+    { label: '创建', primary: true, onClick: async () => {
+        const p = document.getElementById('ws-path')?.value?.trim();
+        if (!p) return false;
+        try {
+          await jpost('/api/project/create', { path: p });
+          messagesEl.innerHTML = '';
+          setTimeout(refreshAll, 1200);
+        } catch (e) { showErrorToast('创建失败：' + (e.message || e)); return false; }
+      } },
+  ]);
+}
 
 $('#btn-new').addEventListener('click', async () => {
   await jpost('/api/session/new');

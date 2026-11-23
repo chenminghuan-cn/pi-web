@@ -1,0 +1,200 @@
+/* 会话列表（侧栏）：完全按 DSH 的 WorkspaceBrowser/Rows.module.css 复刻。
+   数值来源（不要凭感觉改，改完跑 scripts/pixel/pixel-diff-sidebar.mjs 对比）：
+     · 行高：工作区 34px / 会话 32px；圆角 --dsw-radius-md = 12px；内边距 0 8px；gap 6px
+     · 颜色：主文字 --t1、次级 --t3、说明 --t4、悬浮底色 --bg-hover
+             （对应 DSH 的 label-primary/secondary/tertiary/caption；**不要硬编码 rgb**，
+             主站深色主题下硬编码的浅色字会黑字贴黑底、会话名直接看不见）
+             激活工作区文件夹保留品牌蓝 rgb(65,118,230)
+     · 字号：标题 14px/20px，时间 10px/16px
+     · 动效：颜色 100ms ease；三角 rotate(90deg) 150ms cubic-bezier(.4,0,.2,1) */
+
+/* 字体栈与 DSH 完全一致（base.css 的 --dsw-font-family）：字体不同 → 字宽差零点几 px
+   → 右对齐的时间就整体偏移，逐像素比对会整片报红。 */
+.proj-head,
+.sess-item {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: auto;
+  text-rendering: auto;
+}
+
+/* ===== 工作区行（DSH .projectRow） ===== */
+.proj-head {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0 8px;
+  border-radius: 12px;
+  color: var(--t1);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+  cursor: pointer;
+  user-select: none;
+}
+.proj-head:hover,
+.proj-head.active-proj { background: var(--bg-hover); color: var(--t1); }
+
+/* 前导槽的包一层壳只当句柄用：display:contents 让它不参与布局，
+   两个 16×20 的槽直接成为行内的 flex 子项（否则 inline 布局会按基线走，偏 1.25px）。 */
+.proj-caret { display: contents; }
+
+/* 前缀两个 16×20 的槽：文件夹（展开时高亮）+ 三角（悬浮才出现，展开时旋转 90°） */
+.proj-slot {
+  flex: none;
+  width: 16px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--t3);
+}
+.proj-slot svg { display: block; }
+.proj-folder.is-open { color: rgb(65, 118, 230); }
+.proj-arrow { display: none; color: var(--t4); }
+.proj-head:hover .proj-arrow { display: inline-flex; }
+.proj-head:hover .proj-folder { display: none; }
+.proj-arrow svg { transition: transform 150ms cubic-bezier(.4, 0, .2, 1); }
+.proj-folder.is-open ~ .proj-arrow svg { transform: rotate(90deg); }
+
+.proj-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+}
+
+/* ===== 会话行（DSH .sessionRow） ===== */
+.sess-item {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin: 0;
+  padding: 0 8px;
+  border-radius: 12px;
+  border-left: 0;
+  color: var(--t1);
+  font-size: 14px;
+  line-height: 20px;
+}
+.sess-item:hover,
+.sess-item.active { background: var(--bg-hover); color: var(--t1); border-left: 0; padding-left: 8px; }
+
+/* 状态槽（运行中骨架/未读点），宽度固定 16px，没有状态就留白 */
+.sess-slot {
+  flex: none;
+  width: 16px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--t3);
+}
+.sess-item .sess-title-text {
+  flex: 1;
+  min-width: 0;
+  margin: 0 6px 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 20px;
+}
+/* 单行：DSH 的会话行没有第二行预览 */
+.sess-item .sess-preview { display: none; }
+
+.sess-item .sess-time {
+  position: static;
+  flex: none;
+  font-size: 10px;
+  line-height: 16px;
+  color: var(--t3);
+}
+.sess-item:hover .sess-time,
+.sess-item.active .sess-time,
+.sess-item.menu-on .sess-time { display: none; }
+
+/* 右侧操作按钮（DSH .rowActions / .iconButton）：悬浮才出现，裸 16px 字形、间距 10 */
+.sess-item .sess-tools {
+  position: static;
+  flex: none;
+  display: none;
+  align-items: center;
+  gap: 10px;
+  margin-left: 0;
+  opacity: 1;
+  pointer-events: auto;
+}
+.sess-item:hover .sess-tools,
+.sess-item.active .sess-tools,
+.sess-item.menu-on .sess-tools,
+.sess-item:focus-within .sess-tools { display: inline-flex; }
+.sess-item .sess-tool,
+.sess-item .more-btn {
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--t3);
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.sess-item .sess-tool:hover,
+.sess-item .more-btn:hover { background: transparent; color: var(--t1); }
+.sess-item .sess-tool svg,
+.sess-item .more-btn svg { display: block; }
+
+/* DSH 里行悬浮底色是瞬变（Rows.module.css 没给这两个行写 transition），
+   只有三角是 150ms 缓动；这里保持一致。 */
+@media (prefers-reduced-motion: reduce) {
+  .proj-arrow svg { transition: none; }
+}
+
+/* 会话行与工作区行同宽（DSH 的树没有左缩进），行与行之间留 2px（.flatList > * + *）。 */
+.proj-children { padding-left: 0; }
+/* 展开/收起过渡：JS 先量出高度再改，height 从实际值 → 0（或反过来），收起时行同时淡出。
+   动效曲线照 DSH 的 --ds-ease-in-out（cubic-bezier(.4,0,.2,1)）、200ms。 */
+.proj-children.animating {
+  overflow: hidden;
+  transition: height 200ms cubic-bezier(.4, 0, .2, 1), opacity 200ms cubic-bezier(.4, 0, .2, 1);
+}
+.proj-children > .sess-item + .sess-item { margin-top: 2px; }
+.proj-children > .sess-item:first-child { margin-top: 2px; }
+.proj-node + .proj-node { margin-top: 2px; }
+
+/* 工作区行的两个操作（照 DSH projectRow：省略号 + 新建会话，仅悬浮出现） */
+.proj-actions {
+  flex: none;
+  display: none;
+  align-items: center;
+  gap: 10px;
+}
+.proj-head:hover .proj-actions,
+.proj-head.menu-on .proj-actions,
+.proj-head:focus-within .proj-actions { display: inline-flex; }
+.proj-act {
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--t3);
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.proj-act:hover { color: var(--t1); }
+.proj-act svg { display: block; }

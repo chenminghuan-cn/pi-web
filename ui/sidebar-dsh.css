@@ -1,0 +1,74 @@
+/* Sidebar chrome copied from pi-agent's app.css (ws-bar / ws-search / new-sess-wrap
+   / sess-slot / sess-badge). Layout numbers are the source's, not re-derived.
+   sess-list.css (also copied verbatim) carries the workspace + session rows. */
+
+/* DSH naming used by sess-list.css mapped onto pi-web's palette */
+:root {
+  --t1: var(--text);
+  --t3: var(--text-3);
+  --t4: var(--text-3);
+  --bg-hover: var(--panel-hover);
+  --danger: #e5534b;
+}
+
+.ws-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 12px 6px;
+}
+.ws-bar .ws-actions { display: flex; align-items: center; gap: 2px; width: 100%; }
+#ws-ws { margin-left: auto; }
+.ws-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.ws-actions > span { display: inline-flex; }
+.ws-actions button {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; padding: 0;
+  background: transparent !important; border: none !important; color: var(--text-3);
+  border-radius: 8px; cursor: pointer; transition: all .12s;
+}
+.ws-actions button:hover { background: var(--panel-hover); color: var(--text); }
+
+/* search overlay: covers the whole toolbar while open */
+.ws-search {
+  position: absolute; inset: 8px 12px 6px; display: none; align-items: center; gap: 8px;
+  padding: 0 10px; border-radius: 10px; background: var(--bg-2); border: 1px solid var(--border);
+}
+.ws-search.open { display: flex; }
+.ws-search-ic { display: inline-flex; color: var(--text-3); }
+.ws-search input {
+  flex: 1; min-width: 0; border: none; outline: none; background: transparent;
+  color: var(--text); font-size: 13px; font-family: inherit;
+}
+.ws-search-x {
+  width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: transparent; color: var(--text-3); border-radius: 6px; cursor: pointer;
+}
+.ws-search-x:hover { background: var(--panel-hover); color: var(--text); }
+
+.new-sess-wrap { margin: 0 14px 4px; }
+.new-sess-wrap button {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; padding: 12px 0;
+  background: none; border: 1px solid var(--border); border-radius: 8px;
+  font-size: 14px; font-family: inherit; color: var(--text-2); cursor: pointer;
+  transition: all .12s;
+}
+.new-sess-wrap button:hover { background: var(--panel-hover); color: var(--text); border-color: var(--text-3); }
+
+/* status slot in front of a session title (running spinner / unread dot) */
+.sess-slot { flex: none; width: 16px; height: 20px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-3); }
+.sess-badge { flex: none; font-size: 12px; line-height: 1; display: inline-flex; align-items: center; }
+.sess-badge.spin { width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--accent-dim); border-top-color: var(--accent); animation: sess-spin .7s linear infinite; }
+.sess-badge.unread { color: var(--danger); font-size: 9px; }
+@keyframes sess-spin { to { transform: rotate(360deg); } }
+
+/* loading skeleton shown while the list is being fetched */
+.sk-sess { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+.sk { display: block; border-radius: 4px; background: var(--panel-hover); animation: sk-pulse 1.4s ease-in-out infinite; }
+@keyframes sk-pulse { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
+
+/* session list container: fills the sidebar and scrolls on its own */
+#current-sessions { padding: 0 12px 8px; overflow-y: auto; flex: 1 1 auto; min-height: 0; }
+.side-spacer { flex: 0 0 auto; }

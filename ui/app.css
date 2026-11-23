@@ -923,3 +923,9 @@ main { position: relative; }
 .sess-item:hover .sess-tools, .sess-item.active .sess-tools { display: inline-flex; }
 .sess-tool { width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: 4px; background: transparent; color: var(--text-3, #888); font-size: 13px; line-height: 1; cursor: pointer; }
 .sess-tool:hover { color: var(--text); background: var(--panel-active); }
+
+/* ---- archived sessions ---- */
+.proj-count { flex: none; font-size: 10px; color: var(--text-3, #888); padding: 1px 6px; border-radius: 6px; background: var(--bg); }
+.sess-item.archived { color: var(--text-3, #888); }
+.sess-item.archived .sess-title-text { font-style: italic; }
+.archive-group { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 6px; }
