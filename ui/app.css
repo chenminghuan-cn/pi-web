@@ -780,7 +780,7 @@ main { position: relative; }
 .round-rail { position: absolute; right: 8px; top: 64px; bottom: 104px; width: 18px; display: flex; flex-direction: column; gap: 2px; align-items: flex-end; justify-content: stretch; overflow: hidden; z-index: 18; opacity: 0; pointer-events: none; transition: opacity .18s; }
 .round-rail.show { opacity: 1; pointer-events: auto; }
 /* flex-grow is set per tick in JS; the shared basis makes them fill the rail */
-.round-tick { width: 12px; flex: 1 1 0; min-height: 3px; border-radius: 3px; background: rgba(255,255,255,.15); cursor: pointer; transition: background .12s, width .12s; }
+.round-tick { width: 12px; flex: 1 1 0; min-height: 3px; max-height: 44px; border-radius: 3px; background: rgba(255,255,255,.15); cursor: pointer; transition: background .12s, width .12s; }
 .round-tick:hover { background: rgba(78,201,160,.8); width: 17px; }
 .round-tick.active { background: var(--accent); width: 15px; }
 .round-rail:hover .round-tick { background: rgba(255,255,255,.26); }
@@ -929,3 +929,8 @@ main { position: relative; }
 .sess-item.archived { color: var(--text-3, #888); }
 .sess-item.archived .sess-title-text { font-style: italic; }
 .archive-group { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 6px; }
+
+/* the sidebar avatar is the pi-web mark, not a round photo */
+.avatar-sm { width: 30px; height: 30px; border-radius: 9px; background: #0f1512; overflow: hidden; }
+.avatar-sm svg { display: block; }
+:root[data-theme="light"] .avatar-sm { background: #0f1512; }

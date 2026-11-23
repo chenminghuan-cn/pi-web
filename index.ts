@@ -69,7 +69,7 @@ function piAgentDir(): string {
 }
 
 let sessDbPromise: Promise<any | null> | undefined;
-const SESS_SCHEMA = "2";
+const SESS_SCHEMA = "3";
 function sessionDb(): Promise<any | null> {
   if (!sessDbPromise) sessDbPromise = (async () => {
     try {
@@ -84,10 +84,15 @@ function sessionDb(): Promise<any | null> {
         // decision and must survive an index rebuild.
         "CREATE TABLE IF NOT EXISTS session_archive (file TEXT PRIMARY KEY, at INTEGER NOT NULL)",
       ].join("; "));
-      // Schema upgrades: the index is disposable, so just wipe it.
+      // Schema upgrades: the index is disposable, so wipe it. Recreate the table too,
+      // not just its rows — an older build may have created it with a different column
+      // set, and every INSERT would then fail (silently, if the caller swallows it).
       const version = db.prepare("SELECT v FROM meta WHERE k = 'schema'").get()?.v;
       if (version !== SESS_SCHEMA) {
-        db.exec("DELETE FROM sessions; DELETE FROM meta");
+        db.exec("DROP TABLE IF EXISTS sessions");
+        db.exec("DELETE FROM meta");
+        db.exec("CREATE TABLE IF NOT EXISTS sessions (path TEXT PRIMARY KEY, cwd TEXT, name TEXT, first_message TEXT, last_message TEXT, message_count INTEGER, updated INTEGER, created INTEGER)");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_sessions_cwd ON sessions(cwd, updated DESC)");
         db.prepare("INSERT OR REPLACE INTO meta (k, v) VALUES ('schema', ?)").run(SESS_SCHEMA);
       }
       return db;

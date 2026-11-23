@@ -70,5 +70,7 @@
 @keyframes sk-pulse { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
 
 /* session list container: fills the sidebar and scrolls on its own */
-#current-sessions { padding: 0 12px 8px; overflow-y: auto; flex: 1 1 auto; min-height: 0; }
-.side-spacer { flex: 0 0 auto; }
+#current-sessions { padding: 0 12px 8px; overflow-y: auto; flex: 1 1 auto; min-height: 0; max-height: none; }
+/* pushes the profile block to the bottom (app.css already sets flex:1; this file
+   is loaded later, so it must not reset it) */
+.side-spacer { flex: 1 1 auto; min-height: 12px; }
