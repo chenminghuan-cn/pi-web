@@ -108,10 +108,12 @@ button { font-family: inherit; }
 /* ============ MAIN ============ */
 main { display: flex; flex-direction: column; height: 100vh; background: var(--bg-2); }
 #topbar { padding: 14px 32px; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 54px; }
+/* the title takes whatever is left so the stat chips sit flush against the right-hand button */
+.topbar-left { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; }
 .chat-title { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; padding: 4px 10px; border-radius: 6px; flex: 0 1 auto; min-width: 0; }
 .chat-title:hover { background: var(--panel-hover); }
 .chat-title.editing { background: var(--panel-hover); border: 1px solid var(--accent); outline: none; }
-.chat-meta { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+.chat-meta { display: flex; gap: 6px; align-items: center; flex-shrink: 0; margin-left: auto; margin-right: 10px; }
 .chat-meta .stat { display: inline-flex; align-items: baseline; gap: 5px; padding: 3px 9px; border-radius: 7px; background: rgba(255,255,255,.045); font-size: 11.5px; line-height: 1.5; cursor: default; transition: background .12s; }
 .chat-meta .stat:hover { background: rgba(255,255,255,.08); }
 .chat-meta .stat i { font-style: normal; color: var(--text-3, #8a8a8a); }
