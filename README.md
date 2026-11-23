@@ -36,6 +36,7 @@ pi is a terminal coding agent. `pi-web` serves a full chat front-end over HTTP +
 - **Built-in model manager** — add any provider (OpenAI-compatible, Anthropic, Google, local Ollama/vLLM), edit per-model capacities, probe reachability, discover models from the endpoint. Keys stay in local `models.json` and are never echoed back
 - **First-run onboarding** — a fresh install has no provider, so the page says so and links straight to the manager instead of failing every message
 - **Live stats** — context usage, tokens, cost per session
+- **View tabs** — 会话 / 文件 / 终端 / 浏览器 in the header: the work area takes the full column instead of squeezing into a side panel
 - **Round rail** — a thin tick strip on the right, one tick per user turn, sized by how much of the conversation that turn took; click to jump, the active turn is highlighted
 - **Built-in PTY terminal** — a real shell at `/pty`, not a fake one
 - **File browser** — tree + editor over the project workspace; right-click to **zip a file/folder** or **extract a `.zip`** (pure `node:zlib`, no zip dependency; never overwrites — extracts to `name-2/` instead)
