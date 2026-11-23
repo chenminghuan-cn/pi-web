@@ -1,8 +1,27 @@
-# pi-web
+<div align="center">
 
-Codex-style web UI for [pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) — browse, fork and drive your pi sessions from any browser.
+<img src="docs/icon.svg" width="76" height="76" alt="pi-web" />
 
-![node](https://img.shields.io/badge/node-%3E%3D22.5-blue) ![license](https://img.shields.io/badge/license-MIT-blue) ![pi](https://img.shields.io/badge/pi-%E2%89%A51.0-4ec9a0) ![docker](https://img.shields.io/badge/docker-ready-2496ed)
+<h1>π · web</h1>
+
+<p><b>把 pi 搬进浏览器：会话、终端、文件树、浏览器面板，一页全在。</b></p>
+
+<p>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT"></a>
+  <img src="https://img.shields.io/badge/node-%3E%3D22.5-5FA04E?logo=node.js&logoColor=white" alt="node">
+  <img src="https://img.shields.io/badge/pi-%E2%89%A51.0-4ec9a0" alt="pi">
+  <img src="https://img.shields.io/badge/sessions-SQLite%20index-003B57?logo=sqlite&logoColor=white" alt="sqlite">
+  <img src="https://img.shields.io/badge/docker-ready-2496ed?logo=docker&logoColor=white" alt="docker">
+</p>
+
+<p>
+pi 是终端里的 coding agent。pi-web 用 HTTP + WebSocket 给它套一层 Codex 风格的前端：<br>
+长会话留在机器上跑，笔记本 / 手机 / 平板打开浏览器就能接着聊 —— <b>自带模型管理，填个 key 就能用</b>。
+</p>
+
+<p><i>Codex-style web UI for pi — browse, fork and drive your sessions from any browser, with a built-in model manager.</i></p>
+
+</div>
 
 ![pi-web UI](docs/screenshot.png)
 
