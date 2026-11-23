@@ -61,6 +61,24 @@ pi --web --web-port 8080
 
 The server has **no authentication**, by default it listens on `127.0.0.1` only. It can read your sessions, spawn shell commands and write files through the agent — binding it to `0.0.0.0` exposes all of that to your network. Put it behind a reverse proxy with auth (or an SSH tunnel) if you need remote access.
 
+## Model manager
+
+Settings (⚙) opens a provider manager backed by `<agentDir>/models.json` — the same file
+pi reads. Bring your own key: no control plane, so a fresh install only needs a base URL
+and a key.
+
+![model manager](docs/model-manager.png)
+
+- Provider rows show base URL, protocol, model count and a **masked** key — the stored key
+  is never sent back to the browser.
+- Per-model rows edit id, display name, context window and max output (`256K` / `1M`;
+  leave blank to inherit the provider default).
+- **从 provider 拉取** asks `GET {baseUrl}/models` and lets you pick from what the endpoint
+  actually serves, instead of hand-typing ids.
+- **测试** probes reachability and reports status, latency and model count.
+- Pasted `NAME=value` shell lines, quoted keys and keys with whitespace are rejected
+  before they reach the file.
+
 ## Session index (SQLite)
 
 pi stores every session as JSONL under `<agentDir>/sessions/<encoded-cwd>/`. Walking

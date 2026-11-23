@@ -1766,51 +1766,241 @@ function mmRow(p) {
   </div>`;
 }
 
+// Protocol identifiers shown as product names; the identifier is still what gets
+// written to models.json, the label only spares the reader the schema spelling.
+const PROTOCOL_LABELS = {
+  'openai-completions': 'OpenAI 兼容 (/chat/completions)',
+  'openai-responses': 'OpenAI Responses',
+  'anthropic-messages': 'Anthropic Messages',
+  'google-generative-ai': 'Google Generative AI',
+  'xai-responses': 'xAI Responses',
+};
+
+// Capacities are stored as numbers but read as people say them (256K = 256000).
+function formatCapacity(n) {
+  if (n == null || n === '') return '';
+  const v = Number(n);
+  if (!Number.isFinite(v) || v <= 0) return '';
+  if (v >= 1e6 && v % 1e5 === 0) return `${v / 1e6}M`;
+  if (v >= 1000 && v % 100 === 0) return `${v / 1000}K`;
+  return String(v);
+}
+function parseCapacity(text) {
+  const t = String(text || '').trim().toUpperCase().replace(/,/g, '');
+  if (!t) return undefined;
+  const m = t.match(/^([0-9.]+)\s*([KM]?)$/);
+  if (!m) return undefined;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n)) return undefined;
+  const mult = m[2] === 'M' ? 1e6 : m[2] === 'K' ? 1e3 : 1;
+  return Math.round(n * mult) || undefined;
+}
+
+// Reject a pasted `ARK_API_KEY=sk-...` shell line before it becomes a broken key.
+function keyProblem(key) {
+  const v = String(key || '').trim();
+  if (!v) return '';
+  if (/^[A-Z][A-Z0-9_]*=[^=]/.test(v)) return '看起来是整行环境变量，只填 = 右边那一段';
+  if (/[\s]/.test(v)) return 'Key 里不能有空格或换行';
+  if (/^["'`].*["'`]$/.test(v)) return '不要带引号，只填 key 本身';
+  return '';
+}
+
+let mmModels = [];
+let mmDraft = { id: '', name: '', baseUrl: '', api: 'openai-completions', hasKey: false, apiKey: '' };
+
+const mmEmptyModel = () => ({ id: '', name: '', contextWindow: undefined, maxTokens: undefined });
+
 function mmForm(p) {
-  const editing = !!p;
-  const modelIds = (p?.models || []).map(m => m.id).join('\n');
+  mmDraft = {
+    id: p?.id || '', name: p?.name || '', baseUrl: p?.baseUrl || '',
+    api: p?.api || 'openai-completions', hasKey: !!p?.hasKey, apiKey: '',
+  };
+  mmModels = (p?.models || []).map(m => ({
+    id: m.id || '',
+    name: m.name && m.name !== m.id ? m.name : '',
+    contextWindow: m.contextWindow,
+    maxTokens: m.maxTokens,
+  }));
+  if (!mmModels.length) mmModels = [mmEmptyModel()];
+  mmRenderForm();
+}
+
+// Snapshot what is on screen so a re-render (e.g. coming back from the model picker)
+// never loses what the user already typed.
+function mmCollectForm() {
+  for (const f of ['id', 'name', 'baseUrl', 'api', 'apiKey']) {
+    const el = modalBody.querySelector(`[data-f="${f}"]`);
+    if (el) mmDraft[f] = el.value;
+  }
+  mmCollectRows();
+}
+
+function mmRenderForm() {
+  const protocolOptions = Object.entries(PROTOCOL_LABELS)
+    .map(([id, label]) => `<option value="${id}" ${mmDraft.api === id ? 'selected' : ''}>${esc(label)}</option>`)
+    .join('');
+  const editing = !!mmDraft.hasKey || !!mmDraft.id;
   modalBody.innerHTML = `
     <div class="mm-form">
-      <label>Provider ID<input data-f="id" type="text" value="${esc(p?.id || '')}" ${editing ? 'readonly' : ''} placeholder="openai / ollama / my-proxy"></label>
-      <label>显示名<input data-f="name" type="text" value="${esc(p?.name || '')}" placeholder="OpenAI"></label>
-      <label>Base URL<input data-f="baseUrl" type="text" value="${esc(p?.baseUrl || '')}" placeholder="https://api.openai.com/v1"></label>
-      <label>API 协议<select data-f="api">${API_PROTOCOLS.map(a =>
-        `<option value="${a}" ${(p?.api || 'openai-completions') === a ? 'selected' : ''}>${a}</option>`).join('')}</select></label>
-      <label>API Key<input data-f="apiKey" type="password" placeholder="${p?.hasKey ? '已保存，留空不修改' : 'sk-...'}"></label>
-      <label>模型 ID（每行一个）<textarea data-f="models" rows="5" placeholder="gpt-4o-mini&#10;gpt-4.1">${esc(modelIds)}</textarea></label>
+      <div class="mm-grid2">
+        <label>Provider ID<input data-f="id" type="text" value="${esc(mmDraft.id)}" ${editing ? 'readonly' : ''} placeholder="openai / ollama / my-proxy"></label>
+        <label>显示名<input data-f="name" type="text" value="${esc(mmDraft.name)}" placeholder="OpenAI"></label>
+      </div>
+      <label>Base URL<input data-f="baseUrl" type="text" value="${esc(mmDraft.baseUrl)}" placeholder="https://api.openai.com/v1"></label>
+      <div class="mm-grid2">
+        <label>API 协议<select data-f="api">${protocolOptions}</select></label>
+        <label>API Key<input data-f="apiKey" type="password" autocomplete="off" value="${esc(mmDraft.apiKey || '')}" placeholder="${mmDraft.hasKey ? '已保存，留空不修改' : 'sk-...'}"></label>
+      </div>
+      <div class="mm-keyhint hidden" data-role="keyhint"></div>
+      <div class="mm-models">
+        <div class="mm-models-head">
+          <span>模型（容量留空 = 用 provider 默认值）</span>
+          <button class="mm-mini" data-act="discover">从 provider 拉取</button>
+        </div>
+        <div class="mm-model-rows" data-role="rows"></div>
+        <button class="mm-mini" data-act="add-model">+ 添加模型</button>
+      </div>
     </div>
     <div class="mm-actions">
       <button class="mm-btn primary" data-act="save">保存</button>
       <button class="mm-btn" data-act="back">返回</button>
     </div>`;
+  mmRenderRows();
+
+  const keyInput = modalBody.querySelector('[data-f="apiKey"]');
+  keyInput.oninput = (ev) => {
+    const hint = modalBody.querySelector('[data-role="keyhint"]');
+    const msg = keyProblem(ev.target.value);
+    hint.textContent = msg;
+    hint.classList.toggle('hidden', !msg);
+  };
+
   modalBody.onclick = async (ev) => {
     const btn = ev.target.closest('button[data-act]');
     if (!btn) return;
-    if (btn.dataset.act === 'back') return mmList();
-    if (btn.dataset.act !== 'save') return;
-    const get = f => modalBody.querySelector(`[data-f="${f}"]`)?.value ?? '';
-    const id = get('id').trim();
-    if (!id) return;
+    const act = btn.dataset.act;
+    if (act === 'back') return mmList();
+    if (act === 'add-model') { mmCollectForm(); mmModels.push(mmEmptyModel()); return mmRenderForm(); }
+    if (act === 'rm-model') { mmCollectForm(); mmModels.splice(Number(btn.dataset.i), 1); if (!mmModels.length) mmModels = [mmEmptyModel()]; return mmRenderForm(); }
+    if (act === 'discover') return mmDiscover(btn);
+    if (act !== 'save') return;
+
+    mmCollectForm();
+    const id = String(mmDraft.id || '').trim();
+    if (!id) {
+      btn.textContent = '先填 Provider ID';
+      setTimeout(() => (btn.textContent = '保存'), 1800);
+      return;
+    }
+    const key = String(mmDraft.apiKey || '').trim();
+    const bad = keyProblem(key);
+    if (bad) {
+      btn.textContent = bad;
+      setTimeout(() => (btn.textContent = '保存'), 2400);
+      return;
+    }
     const body = {
       id,
-      name: get('name').trim() || id,
-      baseUrl: get('baseUrl').trim(),
-      api: get('api'),
-      models: get('models').split('\n').map(s => s.trim()).filter(Boolean).map(mid => ({ id: mid })),
+      name: String(mmDraft.name || '').trim() || id,
+      baseUrl: String(mmDraft.baseUrl || '').trim(),
+      api: mmDraft.api,
+      models: mmModels.filter(m => m.id.trim()).map(m => ({
+        id: m.id.trim(),
+        name: (m.name || '').trim() || m.id.trim(),
+        ...(m.contextWindow ? { contextWindow: m.contextWindow } : {}),
+        ...(m.maxTokens ? { maxTokens: m.maxTokens } : {}),
+      })),
     };
-    const key = get('apiKey').trim();
     if (key) body.apiKey = key;
     btn.disabled = true;
     btn.textContent = '保存中…';
-    try {
-      await jpost('/api/providers', body);
-      await mmList();
-    } catch (e) {
-      btn.disabled = false;
-      btn.textContent = '保存失败，重试';
-      btn.title = String(e?.message || e);
-    }
+    try { await jpost('/api/providers', body); await mmList(); }
+    catch (e) { btn.disabled = false; btn.textContent = '保存失败，重试'; btn.title = String(e?.message || e); }
   };
+}
+
+function mmRenderRows() {
+  const box = modalBody.querySelector('[data-role="rows"]');
+  if (!box) return;
+  box.innerHTML = mmModels.map((m, i) => `
+    <div class="mm-model-row" data-i="${i}">
+      <input data-mf="id" type="text" value="${esc(m.id)}" placeholder="模型 ID（必填）" aria-label="模型 ID ${i + 1}">
+      <input data-mf="name" type="text" value="${esc(m.name || '')}" placeholder="显示名（可选）" aria-label="显示名 ${i + 1}">
+      <input data-mf="contextWindow" type="text" value="${formatCapacity(m.contextWindow)}" placeholder="256K" aria-label="上下文窗口 ${i + 1}">
+      <input data-mf="maxTokens" type="text" value="${formatCapacity(m.maxTokens)}" placeholder="32K" aria-label="最大输出 ${i + 1}">
+      <button class="mm-mini danger" data-act="rm-model" data-i="${i}" title="删除这一行">×</button>
+    </div>`).join('');
+}
+
+function mmCollectRows() {
+  const box = modalBody.querySelector('[data-role="rows"]');
+  if (!box) return;
+  box.querySelectorAll('.mm-model-row').forEach(row => {
+    const m = mmModels[Number(row.dataset.i)];
+    if (!m) return;
+    row.querySelectorAll('[data-mf]').forEach(inp => {
+      const f = inp.dataset.mf;
+      m[f] = (f === 'contextWindow' || f === 'maxTokens') ? parseCapacity(inp.value) : inp.value;
+    });
+  });
+}
+
+async function mmDiscover(btn) {
+  mmCollectForm();
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '拉取中…';
+  try {
+    const r = await jpost('/api/providers/discover', {
+      id: String(mmDraft.id || '').trim() || undefined,
+      baseUrl: String(mmDraft.baseUrl || '').trim(),
+      apiKey: String(mmDraft.apiKey || '').trim() || undefined,
+    });
+    btn.disabled = false;
+    btn.textContent = label;
+    if (!r.ok || !r.models?.length) {
+      btn.textContent = r.ok ? '没返回模型' : `失败 ${r.status || ''}`;
+      btn.title = String(r.error || '');
+      setTimeout(() => (btn.textContent = label), 3000);
+      return;
+    }
+    mmPickModels(r.models);
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = '拉取失败';
+    btn.title = String(e?.message || e);
+    setTimeout(() => (btn.textContent = label), 3000);
+  }
+}
+
+function mmPickModels(candidates) {
+  const have = new Set(mmModels.map(m => m.id.trim()).filter(Boolean));
+  const rows = candidates.map((c, i) => `
+    <label class="mm-pick-row">
+      <input type="checkbox" data-i="${i}" ${have.has(c.id) ? 'checked disabled' : ''}>
+      <span class="mm-pick-id">${esc(c.id)}</span>
+      ${c.contextWindow ? `<span class="mm-badge">${formatCapacity(c.contextWindow)}</span>` : ''}
+    </label>`).join('');
+  showModal(`拉到 ${candidates.length} 个模型`, `<div class="mm-picks">${rows}</div>`, [
+    { label: '取消', onClick: () => mmRenderFormAfterPick() },
+    { label: '导入所选', primary: true, onClick: () => {
+        const picked = [...modalBody.querySelectorAll('input[type=checkbox]:checked:not([disabled])')]
+          .map(el => candidates[Number(el.dataset.i)]);
+        mmModels = mmModels.filter(m => m.id.trim());
+        for (const c of picked) mmModels.push({ id: c.id, name: c.name || '', contextWindow: c.contextWindow, maxTokens: c.maxTokens });
+        if (!mmModels.length) mmModels = [mmEmptyModel()];
+        mmRenderFormAfterPick();
+      } },
+  ]);
+}
+
+// showModal replaced the body; re-render the editor from the retained draft.
+function mmRenderFormAfterPick() {
+  showModal('模型管理', '', [{ label: '关闭' }]);
+  modalOverlay.querySelector('.modal')?.classList.add('wide');
+  modalBody.classList.add('mm-body');
+  mmRenderForm();
 }
 
 // Kick off initial tree load once currentCwd is populated

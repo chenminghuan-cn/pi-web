@@ -576,6 +576,39 @@ export default function (pi: ExtensionAPI) {
       } catch (e: any) { sendJson(res, 500, { error: String(e) }); }
     });
 
+    // Model discovery: ask the endpoint what it serves, so the user picks from a list
+    // instead of hand-typing ids. Same auth resolution as the probe.
+    route("POST", /^\/api\/providers\/discover$/, async (_r, res, b) => {
+      try {
+        const cfg = readProvidersFile();
+        const stored = b?.id ? cfg.providers?.[b.id] : null;
+        const baseUrl = String(b?.baseUrl ?? stored?.baseUrl ?? "").replace(/\/$/, "");
+        if (!baseUrl) return sendJson(res, 400, { ok: false, error: "baseUrl is empty" });
+        const rawKey = typeof b?.apiKey === "string" && b.apiKey.trim() ? b.apiKey.trim() : stored?.apiKey;
+        const key = typeof rawKey === "string" && rawKey.startsWith("$") ? process.env[rawKey.slice(1)] : rawKey;
+        const r = await fetch(`${baseUrl}/models`, {
+          headers: key ? { Authorization: `Bearer ${key}` } : {},
+          signal: AbortSignal.timeout(15000),
+        });
+        const text = await r.text();
+        let models: any[] = [];
+        try {
+          const j = JSON.parse(text);
+          const arr: any[] = Array.isArray(j.data) ? j.data : Array.isArray(j.models) ? j.models : [];
+          models = arr.map((m: any) => ({
+            id: String(m.id ?? m.name ?? ""),
+            name: m.display_name ?? m.displayName ?? undefined,
+            contextWindow: m.context_length ?? m.contextWindow ?? m.max_context_length ?? undefined,
+            maxTokens: m.max_tokens ?? m.maxTokens ?? m.max_output_tokens ?? undefined,
+          })).filter((m: any) => m.id);
+        } catch {}
+        sendJson(res, 200, {
+          ok: r.ok, status: r.status, models,
+          error: r.ok ? undefined : text.slice(0, 300),
+        });
+      } catch (e: any) { sendJson(res, 500, { ok: false, error: String(e?.message ?? e) }); }
+    });
+
     // Reachability probe: GET {baseUrl}/models with the stored key. Cheap, works for
     // every OpenAI-compatible endpoint, and says “keys wrong” far more clearly than
     // waiting for a chat completion to fail.
