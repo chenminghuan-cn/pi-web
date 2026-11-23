@@ -706,3 +706,31 @@ main { display: flex; flex-direction: column; height: 100vh; background: var(--b
 .slash-ac .slash-item .src-tag.sk { background: #af7a3c44; color: #e6b47c; }
 .slash-ac .slash-item.tui-only { opacity: .5; }
 .slash-ac .slash-item.active, .slash-ac .slash-item:hover { background: var(--accent-dim); }
+
+/* ---- model manager ---- */
+.modal.wide { max-width: 760px; }
+.modal-body.mm-body { max-height: 76vh; overflow: visible; }
+.mm-hint { font-size: 12px; color: var(--text-2); margin-bottom: 12px; }
+.mm-hint code { font-family: ui-monospace, Menlo, monospace; font-size: 11px; }
+.mm-list { display: flex; flex-direction: column; gap: 8px; max-height: 54vh; overflow-y: auto; padding-right: 2px; }
+.mm-row { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+.mm-main { min-width: 0; }
+.mm-name { font-weight: 600; font-size: 13px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.mm-badge { font-size: 10px; padding: 1px 6px; border-radius: 4px; background: var(--bg-2); color: var(--text-2); font-weight: 400; }
+.mm-sub { font-size: 11px; color: var(--text-2); margin-top: 2px; word-break: break-all; }
+.mm-warn { color: #e5a00d; }
+.mm-acts { display: flex; gap: 6px; flex-shrink: 0; }
+.mm-acts button, .mm-btn { padding: 5px 10px; font-size: 12px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg-2); color: var(--text-2); cursor: pointer; transition: border-color .12s, color .12s; }
+.mm-acts button:hover, .mm-btn:hover { border-color: var(--accent); color: var(--text); }
+.mm-acts button.danger:hover { border-color: #e5534b; color: #e5534b; }
+.mm-acts button.ok { color: #3fb950; border-color: #3fb950; }
+.mm-add { margin-top: 12px; width: 100%; }
+.mm-form { display: flex; flex-direction: column; gap: 10px; }
+.mm-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-2); }
+.mm-form input, .mm-form select, .mm-form textarea { padding: 8px 10px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; font-size: 13px; font-family: inherit; outline: none; transition: border-color .12s; }
+.mm-form input:focus, .mm-form select:focus, .mm-form textarea:focus { border-color: var(--accent); }
+.mm-form textarea { resize: vertical; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+.mm-actions { display: flex; gap: 8px; margin-top: 14px; }
+.mm-btn.primary { background: var(--accent); color: #06120d; border-color: var(--accent); font-weight: 600; }
+.mm-empty { padding: 18px; text-align: center; color: var(--text-2); font-size: 12px; }
+.mm-err { color: #e5534b; font-size: 12px; }

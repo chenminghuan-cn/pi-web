@@ -502,8 +502,7 @@ export default function (pi: ExtensionAPI) {
     route("POST", /^\/api\/scoped-models$/, async (_r, res, b) => {
       try {
         const { readFileSync, writeFileSync } = await import("node:fs");
-        const { join } = await import("node:path");
-        const settingsPath = join(process.env.HOME || "~", ".pi", "agent", "settings.json");
+        const settingsPath = join(piAgentDir(), "settings.json");
         let s: any = {};
         try { s = JSON.parse(readFileSync(settingsPath, "utf8")); } catch {}
         if (b?.all === true || b?.ids === null) s.enabledModels = null;
@@ -512,6 +511,99 @@ export default function (pi: ExtensionAPI) {
         sendJson(res, 200, { ok: true, count: Array.isArray(s.enabledModels) ? s.enabledModels.length : null });
       } catch (e: any) { sendJson(res, 500, { error: String(e) }); }
     });
+
+    // ---- Provider / model management ----
+    // Everything lives in <agentDir>/models.json, the file pi itself reads. Bring your
+    // own key: nothing here talks to a control plane, so a fresh install only needs the
+    // user's provider URL and key.
+    const providersFile = () => join(piAgentDir(), "models.json");
+    const readProvidersFile = (): any => {
+      try { return JSON.parse(readFileSync(providersFile(), "utf8")); } catch { return { providers: {} }; }
+    };
+    const writeProvidersFile = (data: any) => writeFileSync(providersFile(), JSON.stringify(data, null, 2) + "\n");
+    // Never send a key to the browser in clear text, and never write a masked one back.
+    const maskKey = (k?: string) => (!k ? "" : k.length <= 10 ? "••••" : `${k.slice(0, 4)}…${k.slice(-4)}`);
+
+    route("GET", /^\/api\/providers$/, async (_r, res) => {
+      try {
+        const cfg = readProvidersFile();
+        const providers = Object.entries(cfg.providers ?? {}).map(([id, p]: [string, any]) => ({
+          id,
+          name: p.name ?? id,
+          baseUrl: p.baseUrl ?? "",
+          api: p.api ?? "openai-completions",
+          hasKey: !!p.apiKey,
+          keyMasked: maskKey(p.apiKey),
+          models: (Array.isArray(p.models) ? p.models : []).map((m: any) => ({
+            id: String(m.id), name: m.name ?? String(m.id), reasoning: !!m.reasoning,
+            contextWindow: m.contextWindow, maxTokens: m.maxTokens,
+          })),
+        }));
+        sendJson(res, 200, { providers, path: providersFile() });
+      } catch (e: any) { sendJson(res, 500, { error: String(e) }); }
+    });
+
+    route("POST", /^\/api\/providers$/, async (_r, res, b) => {
+      try {
+        const cfg = readProvidersFile();
+        cfg.providers ??= {};
+        const id = String(b?.id ?? "").trim();
+        if (!id) return sendJson(res, 400, { error: "provider id required" });
+        if (b?.delete) {
+          delete cfg.providers[id];
+          writeProvidersFile(cfg);
+          return sendJson(res, 200, { ok: true, deleted: id });
+        }
+        const prev = cfg.providers[id] ?? {};
+        const next: any = {
+          ...prev,
+          name: b.name ?? prev.name ?? id,
+          baseUrl: b.baseUrl ?? prev.baseUrl ?? "",
+          api: b.api ?? prev.api ?? "openai-completions",
+        };
+        // Empty or masked input means "keep the stored key".
+        if (typeof b.apiKey === "string" && b.apiKey.trim() && !b.apiKey.includes("…") && !b.apiKey.includes("••")) {
+          next.apiKey = b.apiKey.trim();
+        }
+        if (Array.isArray(b.models)) {
+          next.models = b.models.filter((m: any) => m && m.id).map((m: any) => ({
+            ...m, id: String(m.id).trim(), name: m.name || String(m.id).trim(),
+          }));
+        }
+        cfg.providers[id] = next;
+        writeProvidersFile(cfg);
+        sendJson(res, 200, { ok: true, id });
+      } catch (e: any) { sendJson(res, 500, { error: String(e) }); }
+    });
+
+    // Reachability probe: GET {baseUrl}/models with the stored key. Cheap, works for
+    // every OpenAI-compatible endpoint, and says “keys wrong” far more clearly than
+    // waiting for a chat completion to fail.
+    route("POST", /^\/api\/providers\/test$/, async (_r, res, b) => {
+      try {
+        const cfg = readProvidersFile();
+        const p = b?.id ? cfg.providers?.[b.id] : b;
+        if (!p) return sendJson(res, 404, { error: "provider not found" });
+        const baseUrl = String(p.baseUrl ?? "").replace(/\/$/, "");
+        if (!baseUrl) return sendJson(res, 400, { error: "baseUrl is empty" });
+        const rawKey = typeof b?.apiKey === "string" && b.apiKey.trim() ? b.apiKey.trim() : p.apiKey;
+        // models.json may store "$ARK_API_KEY" instead of the literal key — resolve it.
+        const key = typeof rawKey === "string" && rawKey.startsWith("$") ? process.env[rawKey.slice(1)] : rawKey;
+        const started = Date.now();
+        const r = await fetch(`${baseUrl}/models`, {
+          headers: key ? { Authorization: `Bearer ${key}` } : {},
+          signal: AbortSignal.timeout(12000),
+        });
+        const text = await r.text();
+        let count = 0;
+        try { const j = JSON.parse(text); count = Array.isArray(j.data) ? j.data.length : Array.isArray(j.models) ? j.models.length : 0; } catch {}
+        sendJson(res, 200, {
+          ok: r.ok, status: r.status, ms: Date.now() - started, modelCount: count,
+          error: r.ok ? undefined : text.slice(0, 300),
+        });
+      } catch (e: any) { sendJson(res, 500, { ok: false, error: String(e?.message ?? e) }); }
+    });
+
     route("POST", /^\/api\/project\/switch$/, async (_r, res, b) => {
       try {
         if (!b?.cwd) return sendJson(res, 400, { error: "cwd required" });

@@ -147,6 +147,9 @@ const modalOverlay = $('#modal-overlay'), modalTitle = $('#modal-title'), modalB
 
 // ---- Modal helper ----
 function showModal(title, bodyHtml, actions) {
+  // Reset per-modal layout tweaks so every dialog starts from the narrow default.
+  modalOverlay.querySelector('.modal')?.classList.remove('wide');
+  modalBody.classList.remove('mm-body');
   modalTitle.textContent = title;
   modalBody.innerHTML = bodyHtml;
   modalActions.innerHTML = '';
@@ -1679,6 +1682,136 @@ setInterval(() => {
     }
   }
 }, 800);
+
+// ---- Model manager (Settings) ----
+// Reads/writes <agentDir>/models.json, the same file pi uses. Bring your own key:
+// nothing here goes through a control plane, so a fresh install only needs a URL + key.
+const API_PROTOCOLS = [
+  'openai-completions', 'openai-responses', 'anthropic-messages',
+  'google-generative-ai', 'xai-responses',
+];
+
+$('#settings-btn')?.addEventListener('click', openModelManager);
+
+async function openModelManager() {
+  showModal('模型管理', '<div class="mm-empty">加载中…</div>', [{ label: '关闭' }]);
+  modalOverlay.querySelector('.modal')?.classList.add('wide');
+  modalBody.classList.add('mm-body');
+  await mmList();
+}
+
+async function mmList() {
+  let data;
+  try {
+    data = await jget('/api/providers');
+  } catch (e) {
+    modalBody.innerHTML = `<div class="mm-err">读取失败：${esc(String(e?.message || e))}</div>`;
+    return;
+  }
+  const list = data.providers || [];
+  modalBody.innerHTML = `
+    <div class="mm-hint">配置存在 <code>${esc(data.path || '')}</code>，只保存在本机。</div>
+    <div class="mm-list">${list.length ? list.map(mmRow).join('') : '<div class="mm-empty">还没有 provider，点下面添加。</div>'}</div>
+    <button class="mm-btn mm-add" data-act="add">+ 添加 Provider</button>`;
+  modalBody.onclick = async (ev) => {
+    const btn = ev.target.closest('button[data-act]');
+    if (!btn) return;
+    const act = btn.dataset.act;
+    const id = ev.target.closest('[data-id]')?.dataset.id;
+    if (act === 'add') return mmForm(null);
+    if (act === 'edit') return mmForm(list.find(p => p.id === id));
+    if (act === 'del') {
+      showModal('确认删除', `删除 provider <b>${esc(id)}</b>？它的模型配置和保存的 key 都会一并移除。`, [
+        { label: '取消' },
+        { label: '删除', primary: true, onClick: async () => {
+            try { await jpost('/api/providers', { id, delete: true }); } catch (e) { console.error(e); }
+            openModelManager();
+          } },
+      ]);
+      return;
+    }
+    if (act === 'test') {
+      const label = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '测试中…';
+      try {
+        const r = await jpost('/api/providers/test', { id });
+        btn.classList.toggle('ok', !!r.ok);
+        btn.textContent = r.ok ? `通 ${r.status} · ${r.ms}ms` : `失败 ${r.status || ''}`;
+        if (!r.ok) btn.title = String(r.error || '');
+      } catch (e) {
+        btn.textContent = '失败';
+        btn.title = String(e?.message || e);
+      }
+      setTimeout(() => { btn.disabled = false; btn.textContent = label; }, 3500);
+    }
+  };
+}
+
+function mmRow(p) {
+  const keyLine = p.hasKey
+    ? `key ${esc(p.keyMasked)}`
+    : '<span class="mm-warn">未设置 key</span>';
+  return `<div class="mm-row" data-id="${esc(p.id)}">
+    <div class="mm-main">
+      <div class="mm-name">${esc(p.name)}<span class="mm-badge">${esc(p.api)}</span></div>
+      <div class="mm-sub">${esc(p.baseUrl || '未设置 baseUrl')}</div>
+      <div class="mm-sub">${p.models.length} 个模型 · ${keyLine}</div>
+    </div>
+    <div class="mm-acts">
+      <button data-act="test">测试</button>
+      <button data-act="edit">编辑</button>
+      <button data-act="del" class="danger">删除</button>
+    </div>
+  </div>`;
+}
+
+function mmForm(p) {
+  const editing = !!p;
+  const modelIds = (p?.models || []).map(m => m.id).join('\n');
+  modalBody.innerHTML = `
+    <div class="mm-form">
+      <label>Provider ID<input data-f="id" type="text" value="${esc(p?.id || '')}" ${editing ? 'readonly' : ''} placeholder="openai / ollama / my-proxy"></label>
+      <label>显示名<input data-f="name" type="text" value="${esc(p?.name || '')}" placeholder="OpenAI"></label>
+      <label>Base URL<input data-f="baseUrl" type="text" value="${esc(p?.baseUrl || '')}" placeholder="https://api.openai.com/v1"></label>
+      <label>API 协议<select data-f="api">${API_PROTOCOLS.map(a =>
+        `<option value="${a}" ${(p?.api || 'openai-completions') === a ? 'selected' : ''}>${a}</option>`).join('')}</select></label>
+      <label>API Key<input data-f="apiKey" type="password" placeholder="${p?.hasKey ? '已保存，留空不修改' : 'sk-...'}"></label>
+      <label>模型 ID（每行一个）<textarea data-f="models" rows="5" placeholder="gpt-4o-mini&#10;gpt-4.1">${esc(modelIds)}</textarea></label>
+    </div>
+    <div class="mm-actions">
+      <button class="mm-btn primary" data-act="save">保存</button>
+      <button class="mm-btn" data-act="back">返回</button>
+    </div>`;
+  modalBody.onclick = async (ev) => {
+    const btn = ev.target.closest('button[data-act]');
+    if (!btn) return;
+    if (btn.dataset.act === 'back') return mmList();
+    if (btn.dataset.act !== 'save') return;
+    const get = f => modalBody.querySelector(`[data-f="${f}"]`)?.value ?? '';
+    const id = get('id').trim();
+    if (!id) return;
+    const body = {
+      id,
+      name: get('name').trim() || id,
+      baseUrl: get('baseUrl').trim(),
+      api: get('api'),
+      models: get('models').split('\n').map(s => s.trim()).filter(Boolean).map(mid => ({ id: mid })),
+    };
+    const key = get('apiKey').trim();
+    if (key) body.apiKey = key;
+    btn.disabled = true;
+    btn.textContent = '保存中…';
+    try {
+      await jpost('/api/providers', body);
+      await mmList();
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = '保存失败，重试';
+      btn.title = String(e?.message || e);
+    }
+  };
+}
 
 // Kick off initial tree load once currentCwd is populated
 function waitForCwd() {
