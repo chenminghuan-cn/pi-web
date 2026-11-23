@@ -34,16 +34,56 @@ function inlineMd(s) {
 }
 
 function renderInline(text) {
+  return inlineMd(text);
+}
+
+// Block-level pass: fenced code stays verbatim, "- " / "1. " become real lists,
+// blank lines split paragraphs. Without this, agent answers arrive as one wall of
+// <br>-separated text.
+function renderBlocks(text) {
   const parts = [];
   const re = /```([\w-]*)\n([\s\S]*?)```/g;
   let last = 0, m;
   while ((m = re.exec(text)) !== null) {
-    parts.push(inlineMd(text.slice(last, m.index)));
+    parts.push(textBlocks(text.slice(last, m.index)));
     parts.push(`<pre><code>${esc(m[2])}</code></pre>`);
     last = m.index + m[0].length;
   }
-  parts.push(inlineMd(text.slice(last)));
+  parts.push(textBlocks(text.slice(last)));
   return parts.join('');
+}
+
+function textBlocks(t) {
+  if (!t.trim()) return '';
+  const out = [];
+  let para = [];
+  let list = null;
+  const flushPara = () => {
+    if (para.length) { out.push(`<p>${inlineMd(para.join('\n'))}</p>`); para = []; }
+  };
+  const flushList = () => {
+    if (!list) return;
+    const tag = list.ordered ? 'ol' : 'ul';
+    out.push(`<${tag}>` + list.items.map((i) => `<li>${inlineMd(i)}</li>`).join('') + `</${tag}>`);
+    list = null;
+  };
+  for (const line of t.split('\n')) {
+    const ul = /^\s*[-*+]\s+(.*)$/.exec(line);
+    const ol = /^\s*\d+[.)]\s+(.*)$/.exec(line);
+    if (ul || ol) {
+      flushPara();
+      const ordered = !!ol;
+      if (!list || list.ordered !== ordered) { flushList(); list = { ordered, items: [] }; }
+      list.items.push((ul || ol)[1]);
+      continue;
+    }
+    flushList();
+    if (!line.trim()) { flushPara(); continue; }
+    para.push(line);
+  }
+  flushList();
+  flushPara();
+  return out.join('');
 }
 // Render an ImageContent blob as an <img>. Accepts either raw base64 + mimeType
 // or a pre-built dataUrl. Also tolerates external http(s) URLs (e.g. from
@@ -67,7 +107,7 @@ function renderContent(content) {
   if (typeof content === 'string') return renderInline(content);
   if (!Array.isArray(content)) return esc(String(content));
   return content.map(blk => {
-    if (blk.type === 'text') return renderInline(blk.text);
+    if (blk.type === 'text') return renderBlocks(blk.text);
     if (blk.type === 'thinking') return `<div class="think">${esc(blk.thinking || '')}</div>`;
     if (blk.type === 'image') return renderImage(blk);
     if (blk.type === 'toolCall') {
@@ -85,7 +125,7 @@ function renderContent(content) {
 function renderUserMessage(msg) {
   const parts = [];
   const c = msg?.content;
-  if (typeof c === 'string') parts.push(renderInline(c));
+  if (typeof c === 'string') parts.push(renderBlocks(c));
   else if (Array.isArray(c)) parts.push(renderContent(c));
   // legacy / future: attachments array
   if (Array.isArray(msg?.attachments)) {
@@ -191,16 +231,70 @@ function addMessage(role, content, opts) {
     bodyHtml = renderContent(content);
   }
   if (opts?.classList) for (const cl of opts.classList) wrap.classList.add(cl);
+  const msgObj = (content && typeof content === 'object' && content.role) ? content : null;
   wrap.innerHTML = `
     <div class="role-row">
       <div class="avatar">${role === 'user' ? 'Y' : 'π'}</div>
       <div class="who">${role === 'user' ? 'You' : 'π'}</div>
     </div>
     <div class="body">${bodyHtml}</div>`;
+  if (msgObj) wrap._src = msgObj;
+  if (role === 'assistant') wrap.appendChild(msgFooter(wrap, msgObj));
   messagesEl.appendChild(wrap);
   messagesEl.scrollTop = messagesEl.scrollHeight;
   return wrap.querySelector('.body');
 }
+// Footer under every assistant message: copy, like/dislike (UI only), and what
+// produced it — model, tokens, wall time.
+function msgFooter(wrap, msg) {
+  const f = document.createElement('div');
+  f.className = 'msg-foot';
+  const model = msg?.model || msg?.modelId || '';
+  const usage = msg?.usage || {};
+  const bits = [];
+  if (model) bits.push(esc(String(model)));
+  if (usage.input || usage.output) {
+    bits.push(`${((usage.input || 0) + (usage.output || 0)).toLocaleString()} tok`);
+  }
+  const copy = document.createElement('button');
+  copy.className = 'mf-btn';
+  copy.title = '复制这条消息';
+  copy.textContent = '⧉';
+  copy.onclick = async () => {
+    const text = wrap.querySelector('.body')?.innerText || '';
+    try { await navigator.clipboard.writeText(text); copy.textContent = '✓'; }
+    catch { copy.textContent = '×'; }
+    setTimeout(() => (copy.textContent = '⧉'), 1400);
+  };
+
+  const up = document.createElement('button');
+  up.className = 'mf-btn';
+  up.title = '有帮助';
+  up.textContent = '▲';
+  const down = document.createElement('button');
+  down.className = 'mf-btn';
+  down.title = '没帮助';
+  down.textContent = '▼';
+  const vote = (el, other) => (ev) => {
+    ev.stopPropagation();
+    const on = el.classList.toggle('on');
+    if (on) other.classList.remove('on');
+  };
+  up.onclick = vote(up, down);
+  down.onclick = vote(down, up);
+
+  f.appendChild(copy);
+  f.appendChild(up);
+  f.appendChild(down);
+  if (bits.length) {
+    const meta = document.createElement('span');
+    meta.className = 'mf-meta';
+    meta.innerHTML = bits.join(' · ');
+    f.appendChild(meta);
+  }
+  return f;
+}
+
 function beginStream() {
   if (streamEl) return;
   streaming = true; btnSend.disabled = true;
@@ -688,7 +782,18 @@ function applySessionsData(sessions, projects, current) {
     .filter(s => !q || (s.name || s.firstMessage || '').toLowerCase().includes(q) || basename(s.cwd).toLowerCase().includes(q))
     .sort((a,b) => b.updated - a.updated);
   sessionsEl.innerHTML = '';
-  for (const s of curSessions) sessionsEl.appendChild(renderSessItem(s));
+  let bucket = null;
+  for (const s of curSessions) {
+    const b = dayBucket(s.updated);
+    if (b !== bucket) {
+      bucket = b;
+      const label = document.createElement('div');
+      label.className = 'sess-group';
+      label.textContent = b;
+      sessionsEl.appendChild(label);
+    }
+    sessionsEl.appendChild(renderSessItem(s));
+  }
 
   // other projects
   const others = projects.filter(p => p.cwd !== currentCwd);
@@ -753,12 +858,37 @@ sessionsEl.addEventListener('scroll', () => {
   if (sessionsEl.scrollTop + sessionsEl.clientHeight >= sessionsEl.scrollHeight - 80) loadMoreSessions();
 }, { passive: true });
 
+function relTime(ms) {
+  const diff = Date.now() - (ms || 0);
+  const min = diff / 60000;
+  if (min < 1) return '刚刚';
+  if (min < 60) return `${Math.floor(min)}分钟前`;
+  const h = min / 60;
+  if (h < 24) return `${Math.floor(h)}小时前`;
+  const d = h / 24;
+  if (d < 30) return `${Math.floor(d)}天前`;
+  if (d < 365) return `${Math.floor(d / 30)}个月前`;
+  return `${Math.floor(d / 365)}年前`;
+}
+
+function dayBucket(ms) {
+  const d = new Date(ms || 0);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return '今天';
+  const yd = new Date(now.getTime() - 86400000);
+  if (d.toDateString() === yd.toDateString()) return '昨天';
+  const days = (now - d) / 86400000;
+  if (days < 7) return '最近 7 天';
+  if (days < 30) return '最近 30 天';
+  return '更早';
+}
+
 function renderSessItem(s) {
   const d = document.createElement('div');
   d.className = 'sess-item' + (s.isCurrent ? ' active' : '');
   const title = s.name || s.firstMessage || '(untitled)';
   d.innerHTML = `
-    <div class="sess-name">${esc(title)}</div>
+    <div class="sess-name">${esc(title)}<span class="sess-time">${relTime(s.updated)}</span></div>
     ${s.lastMessage && s.lastMessage !== s.firstMessage ? `<div class="sess-preview">${esc(s.lastMessage).slice(0, 80)}</div>` : ''}
     <div class="more-btn" title="More">⋮</div>`;
   d.onclick = async (ev) => {
