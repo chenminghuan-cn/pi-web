@@ -357,11 +357,20 @@ async function refreshAll() { await Promise.all([refreshStats(), refreshModels()
 
 async function renderAllMessages() {
   try {
-    const data = await jget('/api/messages');
+    const [data, modelsData] = await Promise.all([
+      jget('/api/messages'),
+      jget('/api/models').catch(() => ({ models: [] })),
+    ]);
     const list = (data.messages || []).filter(m => m && m.role !== 'toolResult');
     messagesEl.innerHTML = '';
 
+    if (list.length === 0) onboardingMode = false;
     if (list.length === 0) {
+      // Nothing to show and no model to run: onboarding beats suggestions.
+      if (!(modelsData.models || []).length) {
+        renderNoModelState();
+        return;
+      }
       // empty state
       const empty = document.createElement('div');
       empty.className = 'empty-state';
@@ -451,6 +460,30 @@ function applyStats(s) {
   if (s.model) modelLabel.textContent = shortModel(s.model);
   if (s.thinkingLevel) thinkingLabel.textContent = s.thinkingLevel;
   footerStatus.textContent = '';
+}
+
+// A fresh install has no provider yet — every message would fail, so the first
+// thing the page says is how to add one. Keys stay on this machine.
+let onboardingMode = false;
+
+function renderNoModelState() {
+  // A first-run user has no files to browse; the tool panel just squeezes the
+  // onboarding copy into a narrow column.
+  onboardingMode = true;
+  setWorkbar(false);
+  const empty = document.createElement('div');
+  empty.className = 'empty-state onboard';
+  empty.innerHTML = `
+    <h1>先配一个模型</h1>
+    <p>pi-web 需要一个模型服务商才能干活。key 只写进本机的 <code>models.json</code>，不会上传到任何地方。</p>
+    <div class="onboard-actions">
+      <button class="primary" id="ob-config">配置模型</button>
+      <button id="ob-refresh">已配好，刷新</button>
+    </div>
+    <p class="onboard-hint">支持 OpenAI 兼容 / Anthropic Messages / Google 等协议，本地 Ollama、vLLM 也可以。</p>`;
+  messagesEl.appendChild(empty);
+  empty.querySelector('#ob-config').onclick = () => openModelManager();
+  empty.querySelector('#ob-refresh').onclick = () => refreshAll();
 }
 
 async function refreshModels() {
@@ -1915,7 +1948,7 @@ function mmRenderForm() {
     if (key) body.apiKey = key;
     btn.disabled = true;
     btn.textContent = '保存中…';
-    try { await jpost('/api/providers', body); await mmList(); }
+    try { await jpost('/api/providers', body); await refreshModels(); await mmList(); }
     catch (e) { btn.disabled = false; btn.textContent = '保存失败，重试'; btn.title = String(e?.message || e); }
   };
 }
@@ -2005,7 +2038,7 @@ function mmRenderFormAfterPick() {
 
 // Kick off initial tree load once currentCwd is populated
 function waitForCwd() {
-  if (currentCwd) { setWorkbar(true); updateTreeVisibility(); return; }
+  if (currentCwd) { setWorkbar(!onboardingMode); updateTreeVisibility(); return; }
   setTimeout(waitForCwd, 100);
 }
 waitForCwd();

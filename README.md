@@ -33,6 +33,8 @@ pi is a terminal coding agent. `pi-web` serves a full chat front-end over HTTP +
 - **Branch a conversation** — fork a session at any message, keep exploring without losing the original
 - **Live streaming** — token-by-token over WebSocket, with tool calls and thinking blocks rendered inline
 - **Model + thinking level switching** — from the composer, no restart
+- **Built-in model manager** — add any provider (OpenAI-compatible, Anthropic, Google, local Ollama/vLLM), edit per-model capacities, probe reachability, discover models from the endpoint. Keys stay in local `models.json` and are never echoed back
+- **First-run onboarding** — a fresh install has no provider, so the page says so and links straight to the manager instead of failing every message
 - **Live stats** — context usage, tokens, cost per session
 - **Built-in PTY terminal** — a real shell at `/pty`, not a fake one
 - **File browser** — read files from the project workspace (`/api/fs/list`)
